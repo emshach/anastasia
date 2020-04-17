@@ -11,6 +11,7 @@ export default {
   sendUpdates: false,
   controlIds: {},
   recentlyClosed: [],
+  lastProjectId: null,
   lastWindowId: null,
   lastTabId: null,
   loaded: false,
@@ -37,6 +38,7 @@ export default {
   },
   async loadFromStorage() {
     let {
+      lastProjectId,
       lastWindowId,
       lastTabId,
       controlPanelOpen,
@@ -48,11 +50,13 @@ export default {
       notes,
     } = Object.assign({
       windowIds: [],
+      lastProjectId: 0,
       lastWindowId: 0,
       lastTabId: 0,
     }, this.state, await this.getData([
       'projectIds',
       'windowIds',
+      'lastProjectId',
       'lastWindowId',
       'lastTabId',
       'controlPanelOpen',
@@ -64,7 +68,8 @@ export default {
         'project-0': {
           id: 'project-0',
           name: 'misc',
-          windowIds: []
+          windowIds: [],
+          projectIds: [],
         },
         projectIds,
       });
@@ -89,6 +94,7 @@ export default {
     // console.log({ windows, windowIds, tabIds });
     const tabs = await this.getData( tabIds );
     Object.assign( this, {
+      lastProjectId,
       lastWindowId,
       lastTabId,
       loaded,
@@ -106,11 +112,11 @@ export default {
       tags,
       notes,
     });
-    if ( !lastWindowId || !lastTabId )
-      this.setData({
-        lastWindowId: lastWindowId || 0,
-        lastTabId: lastTabId || 0,
-      });
+    this.setData({
+      lastProjectId: lastProjectId || 0,
+      lastWindowId: lastWindowId || 0,
+      lastTabId: lastTabId || 0,
+    });
     // garbage collection
     const garbage = [];
     for ( const i of Array( lastWindowId ).keys()) {

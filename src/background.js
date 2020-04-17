@@ -8,6 +8,7 @@ function clearControl() {
   store.connected = false;
   store.port = null;
   store.sendUpdates = false;
+  store.controlPanelOpen = false;
   store.setData({  controlPanelOpen: false });
   const wid = store.panelId;
   delete store.panelId;
@@ -58,7 +59,8 @@ const controller = {
       return;
     }
     tabsLoaded().then(() => {
-      store.setData({ controlPanelOpen: true });
+      store.controlPanelOpen = true;
+      store.setData({ controlPanelOpen: true }); // FIXME: ew
       store.panelTab = tabId;
       if (w) {
         w.isControlPanel = true;
@@ -216,7 +218,7 @@ const controller = {
     if ( !w.closed )
       b.windows.remove( w.windowId );
     const wix = store.windowIds.indexOf( w.id );
-    if ( wix > 0 ) {
+    if ( wix > -1 ) {
       store.windowIds.splice( wix, 1 );
       store.setData({ windowIds: store.windowIds });
       store.clearData( w.id );
@@ -325,6 +327,23 @@ const controller = {
       collapse:w.collapsed
     });
   },
+  addProject({ project, parentId }) {
+    const pid = nextProjectId();
+    project = fillProject( project, pid );
+    store.state.allProjects[ pid ] = project;
+    store.state.projectIds.push( pid );
+    store.setData({[ pid ]: project });
+  },
+  removeProject({ projectId }) {
+    const pix = store.state.projectIds.indexOf( projectId );
+    if ( pix > -1 ) {
+      store.state.projectIds.splice( pix, 1 );
+      delete store.state.allProjects;
+      store.clearData([ projectId ]);
+    }
+  },
+  moveProject({ projectId }) {
+  }
   // createTab({ tabId }) {
   // },
   // moveTab({ tabId, windowId, pos }) {
@@ -373,8 +392,10 @@ function onConnected( port ) {
   }
   if ( port.name === 'tab-control' ) {
     if ( store.port || !store.loaded ) {
-      b.windows.remove( port.sender.tab.windowId );
-      return;
+      if ( store.panelId && port.sender.tab.windowId !== store.panelId ) {
+        b.windows.remove( port.sender.tab.windowId );
+        return;
+      }
     }
     store.port = port;
     port.onMessage.addListener( m => {
@@ -748,6 +769,11 @@ async function openClosePrompt( tab ) {
   makeClosePrompt();
 }
 
+function nextProjectId() {
+  const lastProjectId = ++store.lastProjectId;
+  store.setData({ lastProjectId });
+  return `project-${ lastProjectId }`;
+}
 function nextWindowId() {
   const lastWindowId = ++store.lastWindowId;
   store.setData({ lastWindowId });
@@ -838,6 +864,52 @@ function windowDiff( storedWindow, uiWindow ) {
   });
   return out;
 }
+function fillProject( p, id ) {
+  return Object.assign({
+    id,
+    name: 'untitled',
+    windowIds: [],
+    projectIds: [],
+    // tabIds: []   // TODO: this
+  }, p );
+}
+async function fillWindow(w) {
+  try {
+    var winStr = '' + w;
+  } catch (e) {
+    console.warn('fillWindow error', e );
+    return null;
+  }
+  // if ( store.panelId && store.panelId == w.id )
+  if ( store.controlIds[ w.id ])
+    return null;
+  const win = {
+    windowId: w.id,
+    pid: w.pid || 'project-0',
+    focused: w.focused,
+    collapsed: true,
+    title: w.title || 'Window',
+    alwaysOnTop: w.alwaysOnTop,
+    height: w.height,
+    incognito: w.incognito,
+    left: w.left,
+    sessionId: w.sessionId,
+    state: w.state,
+    top: w.top,
+    type: w.type,
+    width: w.width,
+  };
+  const urls = [];
+  const tabIds = ( await b.tabs.query({ windowId: w.id })).map( t => {
+    urls.push( t.url );
+    const tab = fillTab( t, nextTabId() );
+    store.state.tabs[ tab.id ] = tab;
+    return tab.id;
+  });
+  win.tabIds = tabIds;
+  win.tabsMatch = urlsToRegexp( urls );
+  return win;
+}
 function fillTab( tab, id ) {
   const w = store.openWindows[ tab.windowId ];
   return {
@@ -874,46 +946,6 @@ function fillTab( tab, id ) {
     windowId: tab.windowId,
   };
 }
-async function fillWindow(w) {
-  try {
-    var winStr = '' + w;
-  } catch (e) {
-    console.warn('fillWindow error', e );
-    return null;
-  }
-  // if ( store.panelId && store.panelId == w.id )
-  if ( store.controlIds[ w.id ])
-    return null;
-  const win = {
-    windowId: w.id,
-    focused: w.focused,
-    collapsed: true,
-    title: w.title || 'Window',
-    alwaysOnTop: w.alwaysOnTop,
-    height: w.height,
-    incognito: w.incognito,
-    left: w.left,
-    sessionId: w.sessionId,
-    state: w.state,
-    top: w.top,
-    type: w.type,
-    width: w.width,
-  };
-  const urls = [];
-  const tabIds = ( await b.tabs.query({ windowId: w.id })).map( t => {
-    urls.push( t.url );
-    const tab = fillTab( t, nextTabId() );
-    store.state.tabs[ tab.id ] = tab;
-    return tab.id;
-  });
-  win.tabIds = tabIds;
-  win.tabsMatch = urlsToRegexp( urls );
-  return win;
-}
-// function attachWindow( wid, windowId ) {
-//   store.state.windows[ wid ].windowId = windowId;
-//   updateView({ op: 'AttachWindow', wid, windowId });
-// }
 function updateWindow( wid, windowId, diff ) {
   const w = store.state.windows[ wid ];
   if ( w.windowId !== windowId ) {
@@ -927,6 +959,10 @@ function updateWindow( wid, windowId, diff ) {
     switch ( op[0] ) {
     case 'attach':
       op[1].forEach(({ tid, tabId }) => {
+        if (!store.state.tabs[ tid ]) {
+          console.warn( `tab "${tid}" does not exist!` );
+          return;
+        }
         store.state.tabs[ tid ].tabId = tabId;
         store.openTabs[ tabId ] = store.state.tabs[ tid ];
         // updateView({ op: 'AttachTab', tid, tabId });
@@ -961,6 +997,10 @@ function updateWindow( wid, windowId, diff ) {
     switch ( op[0] ) {
     case 'attach':
       op[1].forEach(({ tid, tabId }) => {
+        if (!store.state.tabs[ tid ]) {
+          console.warn( `tab "${tid}" does not exist!` );
+          return;
+        }
         store.state.tabs[ tid ].tabId = tabId;
         store.openTabs[ tabId ] = store.state.tabs[ tid ];
       })
@@ -1002,11 +1042,19 @@ function saveWindow( w ) {
 window.saveWindow = saveWindow;
 
 function addWindow(w) {
+  const p = store.state.allProjects[ w.pid ];
   w.id = nextWindowId();
-  store.windowIds.push( w.id );
+  if ( store.windowIds.indexOf( w.id ) > -1 )
+    console.warn( 'Re-adding window. Should Not Happen.' );
+  else
+    store.windowIds.push( w.id );
+  if ( p.windowIds.indexOf( w.id ) > -1 )
+    console.warn( 'Re-adding window to project. Should Not Happen.' );
+  else
+    p.windowIds.push( w.id );
+  const pos = p.windowIds.indexOf( w.id );
   const tabs = w.tabIds.forEach( tid => {
     const t = store.state.tabs[ tid ];
-    t.id = nextTabId();
     t.wid = w.id;
     store.openTabs[ t.tabId ] = t;
     store.setData({ [ tid ]: t });
@@ -1014,7 +1062,7 @@ function addWindow(w) {
   });
   saveWindow(w);
   store.setData({ windowIds: store.windowIds });
-  updateView({ op: 'AddWindow', win: w, tabs });
+  updateView({ op: 'AddWindow', win: w, tabs, pos });
 }
 
 let loadedTimer = null;

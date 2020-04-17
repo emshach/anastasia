@@ -74,7 +74,9 @@
       "computed-property-spacing": "off",
       "array-bracket-spacing": "off",
       "prefer-const": "warn",
-      "no-trailing-spaces": "warn"
+      "no-trailing-spaces": "warn",
+      "object-curly-newline": "off",
+      "arrow-spacing": "warning"
     },
     "overrides": [
       {

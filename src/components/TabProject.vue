@@ -38,6 +38,16 @@ export default {
 
 <style lang="scss">
 .tab-project {
-  
+  > .header {
+    color: grey;
+    font-size: 120%;
+    font-weight: bold;
+    padding: 4px;
+    border-bottom: 3px solid #444;
+    margin: 4px 0;
+  }
+  > .body {
+    padding-left: 4px;
+  }
 }
 </style>

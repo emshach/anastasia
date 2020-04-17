@@ -27,16 +27,17 @@ export default {
       loading: true,
     };
   },
-created() {
+  created() {
+    document.title = 'TabControl Panel';
     const b = browser;
     const port = b.runtime.connect({ name: 'tab-control' });
     Promise.all([ b.windows.getCurrent(), b.tabs.getCurrent() ])
        .then(([ win, tab ]) => {
          this.setWindowId( win.id );
          this.control = port;
-         port.postMessage({ op: 'registerPanel', windowId: win.id, tabId: tab.id });
-       });
-
+         port.postMessage({
+           op: 'registerPanel', windowId: win.id, tabId: tab.id });
+         });
     port.onMessage.addListener( m => {
       // console.log( 'control => panel', m );
       const e = `on${m.op}`;
@@ -72,13 +73,12 @@ created() {
     onResumeProject({ projectId }) {
       this.allProjects[ projectId ].closed = false;
     },
-    onAddWindow({ win, tabs }) {
+    onAddWindow({ win, tabs, pos }) {
       const p = this.projects[ win.pid ];
       for ( const tab of tabs )
         this.$set( this.tabs, tab.id, tab );
       this.$set( this.windows, win.id, win );
-      this.$set( p.windows, win.id, win );
-      // p.windowIds.splice( pos, 0, win.id )
+      p.windowIds.splice( pos, 0, win.id )
     },
     onRemoveWindow({ windowId }) {
       const w = this.windows[ windowId ];
@@ -144,7 +144,12 @@ created() {
       return this.projectIds.map( x => Object.assign(
         {},
         this.allProjects[x],
-        { windows: this.allProjects[x].windowIds.map( w => this.windows[w] )}
+        { windows: this.allProjects[x].windowIds.map( w => Object.assign(
+          {},
+          this.windows[w],
+          { tabs: this.windows[w].tabIds.map( t => this.tabs[t] )}))
+          // TODO: notes etc
+        }
       ));
     }
   }

@@ -5,7 +5,7 @@ module.exports = {
     popup: {
       template: 'public/browser-extension.html',
       entry: './src/popup/control-panel/main.js',
-      title: 'TabControl'
+      title: 'TabControl Panel'
     },
     'close-prompt': {
       template: 'public/browser-extension.html',
@@ -43,7 +43,7 @@ module.exports = {
       },
       manifestTransformer: manifest => {
         if (process.env.BROWSER === 'gecko' ) {
-          manifest.background = { page: "background.html" };
+          manifest.background = { page: 'background.html' };
           manifest.commands = {
             'goto-tab-1': {
               'suggested_key': {
