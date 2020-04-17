@@ -2,7 +2,7 @@
   <div class="tab-project">
     <div class="header">
       <div class="ctrl-before"><slot name="ctrl-before" /></div>
-      <div class="title"><slot name="title">{{ project.title }}</slot></div>
+      <div class="title"><slot name="title">{{ project.name }}</slot></div>
       <div class="ctrl-after"><slot name="ctrl-after" /></div>
     </div>
     <div class="body">

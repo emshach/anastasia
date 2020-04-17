@@ -63,7 +63,8 @@ export default {
       await this.setData({
         'project-0': {
           id: 'project-0',
-          name: 'misc'
+          name: 'misc',
+          windowIds: []
         },
         projectIds,
       });
@@ -72,10 +73,12 @@ export default {
     const windows     = windowIds  ? await this.getData( windowIds )  : {};
     const allProjects = projectIds ? await this.getData( projectIds ) : {};
 
-    windowIds  = windowIds.filter( w => {
+    windowIds = windowIds.filter( w => {
       const win = windows[w];
-      if ( win &&  !win.pid )
+      if ( win && !win.pid ) {
         win.pid = 'project-0';
+        allProjects[ 'project-0' ].windowIds.push(w);
+      }
       return !!win;
     });
     projectIds = projectIds.filter( p => !!allProjects[p] );
@@ -91,6 +94,7 @@ export default {
       loaded,
       windowIds,
       tabIds,
+      controlPanelOpen,
     });
     Object.assign( this.state, {
       controlActive,

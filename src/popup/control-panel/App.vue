@@ -48,9 +48,10 @@ created() {
   methods: {
     async onLoad({ state }) {
       this.loading = false;
+      console.log( 'got state', state );
       Object.assign( this, state );
     },
-    onSetWindowId({ windowId }) {
+    setWindowId({ windowId }) {
       this.windowId = windowId;
     },
     onAddProject({ prj, pos }) {
@@ -71,11 +72,13 @@ created() {
     onResumeProject({ projectId }) {
       this.allProjects[ projectId ].closed = false;
     },
-    onAddWindow({ win, pos }) {
+    onAddWindow({ win, tabs }) {
       const p = this.projects[ win.pid ];
+      for ( const tab of tabs )
+        this.$set( this.tabs, tab.id, tab );
       this.$set( this.windows, win.id, win );
       this.$set( p.windows, win.id, win );
-      p.windowIds.splice( pos, 0, win.id )
+      // p.windowIds.splice( pos, 0, win.id )
     },
     onRemoveWindow({ windowId }) {
       const w = this.windows[ windowId ];
@@ -112,13 +115,11 @@ created() {
     onAddTab({ tab, pos }) {
       const w = this.windows[ tab.wid ];
       this.$set( this.tabs, tab.id, tab );
-      this.$set( w.tabs, tab.id, tab );
       w.tabIds.splice( pos, 0, tab.id )
     },
     onRemoveTab({ tabId }) {
       const t = this.tabs[ tabId ];
       const w = this.windows[ t.wid ];
-      this.$delete( w.tabs, tabId );
       this.$delete( this.tabs, tabId );
       w.tabIds.splice( w.tabIds.indexOf( tabId ), 1 );
     },
@@ -139,7 +140,13 @@ created() {
     },
   },
   computed: {
-    projcets: () => this.projectIds.map( x => this.allProjects[x] )
+    projects() {
+      return this.projectIds.map( x => Object.assign(
+        {},
+        this.allProjects[x],
+        { windows: this.allProjects[x].windowIds.map( w => this.windows[w] )}
+      ));
+    }
   }
 }
 </script>

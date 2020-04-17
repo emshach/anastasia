@@ -22,18 +22,19 @@ function clearControl() {
   }
 }
 function getTabWindow( tab ) {
-  const wid = tab.wid;
+  const wid = tab.wid,
+        tid = tab.id;
   let w, tix;
   if ( wid )
     w = store.windows[ wid ];
   if (w) {
-    tix = w.tabs.indexOf( tab );
+    tix = w.tabIds.indexOf( tid );
     return { w, tix };
   } else {
     w = Object.values( store.windows ).find( win => {
       if ( !win.tabs )
         return false;
-      tix = win.tabs.indexOf( tab );
+      tix = win.tabIds.indexOf( tid );
       if ( tix < 0 )
         return false;
       return true;
@@ -57,21 +58,18 @@ const controller = {
       return;
     }
     tabsLoaded().then(() => {
-      b.storage.local.set({ controlPanelOpen: true });
+      store.setData({ controlPanelOpen: true });
       store.panelTab = tabId;
       if (w) {
         w.isControlPanel = true;
         saveWindow(w);
       }
-      updateView({
-        op: 'Load',
-        state: store.state
-      });
       store.sendUpdates = true;
+      updateView({ op: 'Load', state: store.state });
     });
   },
   closeTab({ tabId }) {
-    const tab = store.tabs[ tabId ];
+    const tab = store.state.tabs[ tabId ];
     if ( tab.tabId && ( tab.tabId in store.openTabs ))
       b.tabs.remove( tab.tabId );
     if ( tab.closed ) {
@@ -81,36 +79,35 @@ const controller = {
       tab.active = false;
       delete tab.tabId;
       delete tab.windowId;
-      b.storage.local.set({[ tab.id ]: tab });
+      store.setData({[ tab.id ]: tab });
       updateView({ op: 'SuspendTab', tabId });
     }
   },
   removeTab({ tabId }) {
-    const tab = store.tabs[ tabId ];
+    const tab = store.state.tabs[ tabId ];
     if ( !tab ) return;
     const { w, tix } = getTabWindow( tab );
     if ( w && tix > -1 ) {
-      w.tabs.splice( tix, 1 );
       w.tabIds.splice( tix, 1 );
     }
     if ( store.openTabs[ tab.tabId ]) {
       delete store.openTabs[ tab.tabId ];
       b.tabs.remove( tab.tabId );
     }
-    b.storage.local.remove( tab.id );
-    delete store.tabs[ tab.id ];
+    store.clearData( tab.id );
+    delete store.state.tabs[ tab.id ];
     updateView({ op: 'RemoveTab', tabId });
     if (w) {
-      console.log('tab removed', w );
+      console.log( 'tab removed', w );
       saveWindow(w);
-      if ( !w.tabs.length )
+      if ( !w.tabIds.length )
         this.removeWindow({ windowId: w.id });
     }
   },
   focusTab({ tabId }) {
-    const tab = store.tabs[ tabId ];
+    const tab = store.state.tabs[ tabId ];
     if ( tab ) {
-      const w = store.windows[ tab.wid ];
+      const w = store.state.windows[ tab.wid ];
       if ( tab.closed || w.closed ) {
         this.resumeTab({ tabId, focus: true });
         return;
@@ -123,8 +120,9 @@ const controller = {
     }
   },
   resumeTab({ tabId, focus }) {
-    const tab = store.tabs[ tabId ];
-    const w = store.windows[ tab.wid ];
+    const tabs = store.state.tabs;
+    const tab = tabs[ tabId ];
+    const w = store.state.windows[ tab.wid ];
     if ( w.closed ) {
       this.resumeWindow({ windowId: w.id, tabId, focus });
       return;
@@ -136,9 +134,9 @@ const controller = {
       tab.openerTabId = tab.opener.tabId;
       pos = tab.opener.index + 1;
     } else {
-      w.tabs.find( t => {
-        if ( !t.closed ) ++pos;
-        return t === tab;
+      w.tabIds.find( t => {
+        if ( !tabs[t].closed ) ++pos;
+        return t === tabId;
       });
     }
     tab.index = pos;
@@ -166,7 +164,7 @@ const controller = {
     updateView({ op: 'ResumeTab', tabId });
   },
   attachTab({ tid, tabId }) {
-    const tab = store.tabs[ tid ];
+    const tab = store.state.tabs[ tid ];
     const winTab = store.openTabs[ tabId ];
     // console.log( 'attachTab', { winTab, tab });
     if ( winTab ) {
@@ -175,27 +173,26 @@ const controller = {
       if ( winTab.wid !== tab.wid )
         return;                 // TODO: throw?
       // console.log( 'overwriting', { winTab, tab });
-      const w = store.windows[ winTab.wid ];
+      const w = store.state.windows[ winTab.wid ];
       // TODO: maybe alias
-      const i = w.tabs.indexOf( tab );
+      const i = w.tabIds.indexOf( tid );
       if ( i > -1 ) {
-        w.tabs.splice( i, 1 );
         if ( w.tabIds && ( !w.tabIds[i] || w.tabIds[i] === winTab.id )) {
           w.tabIds.splice( i, 1 );
         }
         saveWindow(w);
       }
-      delete store.tabs[ winTab.id ];
+      delete store.state.tabs[ winTab.id ];
       b.storage.remove( winTab.id );
       updateView({ op: 'RemoveTab', tabId: winTab.id });
     }
     store.openTabs[ tabId ] = tab;
     tab.tabId = tabId;
     delete tab.closed;
-    b.storage.local.set({[ tab.id ]: tab });
+    store.setData({[ tab.id ]: tab });
   },
   closeWindow({ windowId }) {
-    const w = store.windows[ windowId ];
+    const w = store.state.windows[ windowId ];
     if ( w.closed ) {
       this.removeWindow({ windowId }); // TODO: ask for confirmation if many tabs
     } else {
@@ -204,30 +201,30 @@ const controller = {
     }
   },
   removeWindow({ windowId }) {
-    const w = store.windows[ windowId ];
+    const w = store.state.windows[ windowId ];
     if (!w) return;
     delete store.openWindows[ windowId ];
-    const tabIds = w.tabIds || w.tabs.map( t => t.id );
+    const tabIds = w.tabIds;
     const togo = tabIds.concat([ w.id ]);
     // console.log({ togo });
-    b.storage.local.remove( togo );
+    store.clearData( togo );
     tabIds.forEach( tid => {
-      if ( store.tabs[ tid ].tabId )
-        delete store.openTabs[ store.tabs[ tid ].tabId ];
-      delete store.tabs[ tid ];
+      if ( store.state.tabs[ tid ].tabId )
+        delete store.openTabs[ store.state.tabs[ tid ].tabId ];
+      delete store.state.tabs[ tid ];
     });
     if ( !w.closed )
       b.windows.remove( w.windowId );
     const wix = store.windowIds.indexOf( w.id );
     if ( wix > 0 ) {
       store.windowIds.splice( wix, 1 );
-      b.storage.local.set({ windowIds: store.windowIds });
-      b.storage.local.remove( w.id );
+      store.setData({ windowIds: store.windowIds });
+      store.clearData( w.id );
     }
     updateView({ op: 'RemoveWindow', windowId: w.id });
   },
   focusWindow({ windowId }) {
-    const w = store.windows[ windowId ];
+    const w = store.state.windows[ windowId ];
     if ( w.closed ) {
       this.resumeWindow({ windowId, focus: true });
       return;
@@ -238,7 +235,7 @@ const controller = {
       } : () => {} );
   },
   resumeWindow({ windowId, tabId, focus }) {
-    const w = store.windows[ windowId ];
+    const w = store.state.windows[ windowId ];
     const controlActive = store.state.controlActive;
     // console.log( 0, { controlActive });
     w.openingTab = tabId;
@@ -251,11 +248,13 @@ const controller = {
         if ( w[k] !== '' && w[k] != null )
           win[k] = w[k];
       });
-    const tab = store.tabs[ tabId ];
+    const tab = store.state.tabs[ tabId ];
+    // TODO: don't do things so differently if we have a tab
     if ( tab ) {
       win.url = tab.url;
       const openTabs = [];
-      w.tabs.forEach( t => {
+      w.tabIds.forEach( tid => {
+        const t = store.state.tabs[ tid ];
         if ( !t.closed && t.id !== tab.id ) {
           t.discarded = true;
           t.active = false;
@@ -277,7 +276,8 @@ const controller = {
         saveWindow(w);
       });
     } else {
-      const openTabs = w.tabs.filter( t => !t.closed );
+      const openTabs = w.tabIds.map( t => store.tabs[t] )
+            .filter( t => !t.closed );
       win.url = openTabs.map( t => t.url );
       b.windows.create( win ).then( win => {
         delete w.closed;
@@ -299,16 +299,16 @@ const controller = {
     updateView({ op: 'ResumeWindow', windowId: w.id });
   },
   attachWindow({ wid, windowId }) {
-    const w = store.windows[ wid ];
+    const w = store.state.windows[ wid ];
     const win = store.openWindows[ windowId ];
     if ( win ) {
       if ( w.id === win.id )
         return;
-      b.storage.local.remove(( win.tabs.map( t => {
-        delete store.tabs[ t.id ];
-        return t.id;
+      store.clearData(( win.tabIds.map( tid => {
+        delete store.state.tabs[ tid ];
+        return tid;
       }).concat( win.id )));
-      delete store.windows[ win.id ];
+      delete store.state.windows[ win.id ];
     }
 
     store.openWindows[ windowId ] = w;
@@ -316,9 +316,9 @@ const controller = {
     saveWindow(w);
   },
   collapseWindow({ windowId }) {
-    const w = store.windows[ windowId ];
+    const w = store.state.windows[ windowId ];
     w.collapsed = !w.collapsed;
-    b.storage.local.set({ [ w.id ]: w });
+    store.setData({ [ w.id ]: w });
     updateView({
       op: 'SetWindowCollapse',
       windowId: w.id,
@@ -402,7 +402,7 @@ function onWindowCreated( win ) {
       loadFromUI([ win ]);
       const w = !store.controlIds[ win.id ] && store.openWindows[ win.id ];
       if ( !w ) return;
-      b.storage.local.set({[ w.id ]: w });
+      store.setData({[ w.id ]: w });
       updateView({ op: 'AddWindow', win: w });
     }, 750 );
   });
@@ -438,14 +438,14 @@ function onWindowFocused( winId ) {
       return;
     }
     const windowId = w.id;
-    if ( store.focusedWindow ) {
-      const prev = store.focusedWindow;
+    if ( store.state.activeWindow ) {
+      const prev = store.state.activeWindow;
       prev.focused = false;
       w.focused = true;
-      b.storage.local.set({[ prev.id ]: prev, [ w.id ]: w });
+      store.setData({[ prev.id ]: prev, [ w.id ]: w });
     } else {
       const focused = {};
-      Object.values( store.windows ).forEach( w => {
+      Object.values( store.state.windows ).forEach( w => {
         if ( w.focused ) {
           w.focused = false;
           focused[ w.id ] = w;
@@ -453,11 +453,11 @@ function onWindowFocused( winId ) {
       });
       focused[ w.id ] = w;
       w.focused = true;
-      b.storage.local.set( focused );
+      store.setData( focused );
     }
-    store.focusedWindow = w;
+    store.state.activeWindow = w;
     store.state.controlActive = false;
-    updateView({ op: 'focusWindow', windowId });
+    updateView({ op: 'FocusWindow', windowId });
   });
 }
 function onTabCreated( tab ) {
@@ -478,15 +478,14 @@ function onTabCreated( tab ) {
       if (!w)
         return;
       let pos = -1;
-      if ( tab.index >= w.tabs.length ) {
+      if ( tab.index >= w.tabIds.length ) {
         tab = fillTab( tab, nextTabId() );
-        w.tabs.push( tab );
-        if ( w.tabIds )
-          w.tabIds.push( tab.id );
+        w.tabIds.push( tab.id );
       } else {
         let potentials = [];
         pos = 0;
-        const ins = w.tabs.findIndex( t => {
+        const ins = w.tabIds.findIndex( tid => {
+          const t = store.state.tabs[ tid ];
           if ( t.closed )
             potentials.push(t);
           else if ( pos === tab.index )
@@ -503,39 +502,36 @@ function onTabCreated( tab ) {
           const tid = match.id;
           match.closed = false;
           Object.assign( match, {
-            tabId: tab.id,
-            // wid: w ? w.id : null,
-            active: tab.active,
-            // url: tab.url,
-            icon: match.icon || tab.favIconUrl,
-            // title: tab.title,
-            attention: tab.attention,
-            audible: tab.audible,
-            autoDiscardable: tab.autoDiscardable,
-            discarded: tab.discarded,
-            height: tab.height,
-            hidden: tab.hidden,
-            highlighted: tab.highlighted,
-            incognito: tab.incognito,
-            index: tab.index,
-            isArticle: tab.isArticle,
-            isInReaderMode: tab.isInReaderMode,
-            lastAccessed: tab.lastAccessed,
-            mute:{
-              muted: tab.mutedInfo.muted,
-              reason: tab.mutedInfo.reason,
-              extension: tab.mutedInfo.extensionId
+            tabId           : tab.id,
+            active          : tab.active,
+            icon            : match.icon || tab.favIconUrl,
+            attention       : tab.attention,
+            audible         : tab.audible,
+            autoDiscardable : tab.autoDiscardable,
+            discarded       : tab.discarded,
+            height          : tab.height,
+            hidden          : tab.hidden,
+            highlighted     : tab.highlighted,
+            incognito       : tab.incognito,
+            index           : tab.index,
+            isArticle       : tab.isArticle,
+            isInReaderMode  : tab.isInReaderMode,
+            lastAccessed    : tab.lastAccessed,
+            openerTabId     : tab.openerTabId,
+            pinned          : tab.pinned,
+            sessionId       : tab.sessionId,
+            status          : tab.status,
+            successorId     : tab.successorId,
+            width           : tab.width,
+            windowId        : tab.windowId,
+            mute: {
+              muted     : tab.mutedInfo.muted,
+              reason    : tab.mutedInfo.reason,
+              extension : tab.mutedInfo.extensionId
             },
-            openerTabId: tab.openerTabId,
-            pinned: tab.pinned,
-            sessionId: tab.sessionId,
-            status: tab.status,
-            successorId: tab.successorId,
-            width: tab.width,
-            windowId: tab.windowId,
           });
           store.openTabs[ tabId ] = match;
-          b.storage.local.set({[ match.id ]: match });
+          store.setData({[ match.id ]: match });
           updateView({ op: 'ResumeTab', tabId: tid });
           if ( match.active )
             updateView({
@@ -547,20 +543,16 @@ function onTabCreated( tab ) {
         }
         tab = fillTab( tab, nextTabId() );
         if ( pos > -1) {
-          w.tabs.splice( pos, 0, tab );
-          if ( w.tabIds )
-            w.tabIds.splice( pos, 0, tab.id );
+          w.tabIds.splice( pos, 0, tab.id );
         } else {
-          w.tabs.push( tab );
-          if ( w.tabIds )
-            w.tabIds.push( tab.id );
+          w.tabIds.push( tab.id );
         }
       }
       saveWindow(w);
 
-      store.tabs[ tab.id ] = tab;
+      store.state.tabs[ tab.id ] = tab;
       store.openTabs[ tab.tabId ] = tab;
-      b.storage.local.set({[ tab.id ]: tab });
+      store.setData({[ tab.id ]: tab });
       updateView({ op: 'AddTab', tab, pos });
     }, 2000 );
   });
@@ -583,9 +575,7 @@ function onTabUpdated( tabId, changes ) {
       tab.icon = tab.favIconUrl;
       delete tab.favIconUrl;
     }
-    b.storage.local.set({[ tab.id ]: tab });
-    if ( !store.port || !store.sendUpdates )
-      return;
+    store.setData({[ tab.id ]: tab });
     tabId = tab.id;
     updateView({ op: 'UpdateTab', tabId, changes, tab });
   });
@@ -604,13 +594,13 @@ function onTabFocused({ previousTabId, tabId, windowId }) {
       windowId = w.id;
       prev.active = false;
       tab.active = true;
-      b.storage.local.set({ [ prev.id ]: prev, [ tab.id ]: tab });
+      store.setData({ [ prev.id ]: prev, [ tab.id ]: tab });
       updateView({ op: 'FocusTab', previousTabId, tabId, windowId });
     } else {
       tabId = tab.id;
       windowId = w.id;
       tab.active = true;
-      b.storage.local.set({[ tab.id ]: tab });
+      store.setData({[ tab.id ]: tab });
       updateView({ op: 'FocusTab', previousTabId, tabId, windowId });
     }
   });
@@ -630,14 +620,14 @@ function onTabRemoved( tabId, { windowId, isWindowClosing }) {
         delete tab.tabId;
         delete tab.windowId;
         delete store.openTabs[ tabId ];
-        b.storage.local.set({[ tab.id ]: tab });
+        store.setData({[ tab.id ]: tab });
         updateView({ op: 'SuspendTab', tabId: tab.id });
       }
     }
-  } else if ( tab && store.windows[ tab.wid ]
+  } else if ( tab && store.state.windows[ tab.wid ]
               && !store.controlIds[ tab.wid ]
-              && store.windows[ tab.wid ].tabs
-              && store.windows[ tab.wid ].tabs.length === 1 ) {
+              && store.state.windows[ tab.wid ].tabs
+              && store.state.windows[ tab.wid ].tabs.length === 1 ) {
     if ( /^about:/.test( tab.url )) {
       controller.removeTab({ tabId: tab.id });
     } else if (! tab.closed )
@@ -760,12 +750,12 @@ async function openClosePrompt( tab ) {
 
 function nextWindowId() {
   const lastWindowId = ++store.lastWindowId;
-  b.storage.local.set({ lastWindowId });
+  store.setData({ lastWindowId });
   return `window-${ lastWindowId }`;
 }
 function nextTabId() {
   const lastTabId = ++store.lastTabId;
-  b.storage.local.set({ lastTabId });
+  store.setData({ lastTabId });
   return `tab-${ lastTabId }`;
 }
 function urlsToRegexp( urls ) {
@@ -811,10 +801,10 @@ function windowDiff( storedWindow, uiWindow ) {
   const open = storedWindow.openUrls.match( rx );
   const all = storedWindow.allUrls.match( rx );
   // console.log({ rx, open, all });
-  const tabs = uiWindow.tabs;
+  const tabs = uiWindow.tabIds.map( t => store.state.tabs[t] );
   let d = parseData( open, tabs ),
       allData;
-  if ( d.foundCount < uiWindow.tabs.length ) {
+  if ( d.foundCount < uiWindow.tabIds.length ) {
     allData = parseData( all, tabs );
     if ( allData.foundCount > d.foundCount )
       d = allData;
@@ -822,10 +812,10 @@ function windowDiff( storedWindow, uiWindow ) {
       allData = null;
   }
   const reopen = [];
-  if ( d.foundCount === uiWindow.tabs.length && d.closedCount === 0 ) {
+  if ( d.foundCount === uiWindow.tabIds.length && d.closedCount === 0 ) {
     if ( allData )
       d.found.forEach(({ tid }) => {
-        if ( store.tabs[ tid ].closed )
+        if ( store.state.tabs[ tid ].closed )
           reopen.push( tid );
       });
     else return [[ 'attach', d.found ]];                // exact match
@@ -834,7 +824,7 @@ function windowDiff( storedWindow, uiWindow ) {
     reopen.length ? [[ 'reopen', reopen ]] : []);
   if ( allData ) {
     d.closed.forEach(([ tid, url ]) => {
-      const tab = store.tabs[ tid ];
+      const tab = store.state.tabs[ tid ];
       if ( !tab.closed )
         out.push([ 'close', tid ])
     });
@@ -905,26 +895,27 @@ async function fillWindow(w) {
     left: w.left,
     sessionId: w.sessionId,
     state: w.state,
-    tabs: w.tabs,
     top: w.top,
     type: w.type,
     width: w.width,
   };
   const urls = [];
-  const tabs = ( await b.tabs.query({ windowId: w.id })).map( t => {
+  const tabIds = ( await b.tabs.query({ windowId: w.id })).map( t => {
     urls.push( t.url );
-    return fillTab(t);
+    const tab = fillTab( t, nextTabId() );
+    store.state.tabs[ tab.id ] = tab;
+    return tab.id;
   });
-  win.tabs = tabs;
+  win.tabIds = tabIds;
   win.tabsMatch = urlsToRegexp( urls );
   return win;
 }
 // function attachWindow( wid, windowId ) {
-//   store.windows[ wid ].windowId = windowId;
+//   store.state.windows[ wid ].windowId = windowId;
 //   updateView({ op: 'AttachWindow', wid, windowId });
 // }
 function updateWindow( wid, windowId, diff ) {
-  const w = store.windows[ wid ];
+  const w = store.state.windows[ wid ];
   if ( w.windowId !== windowId ) {
     w.windowId = windowId;
     // updateView({ op: 'SetWindowId', wid, windowId });
@@ -936,21 +927,21 @@ function updateWindow( wid, windowId, diff ) {
     switch ( op[0] ) {
     case 'attach':
       op[1].forEach(({ tid, tabId }) => {
-        store.tabs[ tid ].tabId = tabId;
-        store.openTabs[ tabId ] = store.tabs[ tid ];
+        store.state.tabs[ tid ].tabId = tabId;
+        store.openTabs[ tabId ] = store.state.tabs[ tid ];
         // updateView({ op: 'AttachTab', tid, tabId });
       })
       break;
     case 'reopen':
       op[1].forEach( tid => {
-        tab = store.tabs[ tid ];
+        tab = store.state.tabs[ tid ];
         delete tab.closed;
         updateView({ op: 'ResumeTab', tid });
       });
       break;
     case 'close':
       tid = op[1];
-      tab = store.tabs[ tid ];
+      tab = store.state.tabs[ tid ];
       tab.closed = true;
       updateView({ op: 'SuspendTab', tid });
       break;
@@ -958,9 +949,9 @@ function updateWindow( wid, windowId, diff ) {
       [ _, after, insert ] = op;
       tab = Object.assign({}, insert );
       tab.id = nextTabId();
-      store.tabs[ tab.id ] = tab;
+      store.state.tabs[ tab.id ] = tab;
       store.openTabs[ insert.tabId ] = tab;
-      b.storage.local.set({ [ tab.id ]: tab });
+      store.setData({ [ tab.id ]: tab });
       after = store.openTabs[ after ];
       updateView({ op: 'AddTab', tab, after });
       break;
@@ -970,62 +961,60 @@ function updateWindow( wid, windowId, diff ) {
     switch ( op[0] ) {
     case 'attach':
       op[1].forEach(({ tid, tabId }) => {
-        store.tabs[ tid ].tabId = tabId;
-        store.openTabs[ tabId ] = store.tabs[ tid ];
+        store.state.tabs[ tid ].tabId = tabId;
+        store.openTabs[ tabId ] = store.state.tabs[ tid ];
       })
       break;
     case 'reopen':
       op[1].forEach( tid => {
-        tab = store.tabs[ tid ];
+        tab = store.state.tabs[ tid ];
         delete tab.closed;
       });
       break;
     case 'close':
       tid = op[1];
-      tab = store.tabs[ tid ];
+      tab = store.state.tabs[ tid ];
       tab.closed = true;
       break;
     case 'new':
       [ _, after, insert ] = op;
       tab = Object.assign({}, insert );
       tab.id = nextTabId();
-      store.tabs[ tab.id ] = tab;
+      store.state.tabs[ tab.id ] = tab;
       store.openTabs[ tab.tabId ] = tab;
-      b.storage.local.set({ [ tab.id ]: tab });
+      store.setData({ [ tab.id ]: tab });
       break;
     }
   })
 }
 function saveWindow( w ) {
-  const tabIds = w.tabs ? w.tabs.map( t => t.id ) : w.tabIds || [];
   // FIXME: please!
-  const w2 = Object.assign({}, w, { tabIds });
+  const w2 = Object.assign({}, w );
   delete w2.tabs;
   delete w2.tabsMatch;
-  if ( !store.windows[ w.id ])
-    store.windows[ w.id ] = w;
+  if ( !store.state.windows[ w.id ])
+    store.state.windows[ w.id ] = w;
   if ( !store.openWindows[ w.windowId ])
     store.openWindows[ w.windowId ] = w;
   // console.log( 'saving', { [ w.id ]: w2 });
-  b.storage.local.set({[ w.id ]: w2 });
+  store.setData({[ w.id ]: w2 });
 }
 window.saveWindow = saveWindow;
 
 function addWindow(w) {
   w.id = nextWindowId();
   store.windowIds.push( w.id );
-  const tabIds = w.tabs.map( tab => {
-    tab.id = nextTabId();
-    tab.wid = w.id;
-    store.tabs[ tab.id ] = tab;
-    store.openTabs[ tab.tabId ] = tab;
-    b.storage.local.set({ [ tab.id ]: tab });
-    return tab.id;
+  const tabs = w.tabIds.forEach( tid => {
+    const t = store.state.tabs[ tid ];
+    t.id = nextTabId();
+    t.wid = w.id;
+    store.openTabs[ t.tabId ] = t;
+    store.setData({ [ tid ]: t });
+    return t;
   });
-  w.tabIds = tabIds;
   saveWindow(w);
-  b.storage.local.set({ windowIds: store.windowIds });
-  updateView({ op: 'AddWindow', win: w });
+  store.setData({ windowIds: store.windowIds });
+  updateView({ op: 'AddWindow', win: w, tabs });
 }
 
 let loadedTimer = null;
@@ -1062,26 +1051,24 @@ async function loadFromUI( ws ) {
   // get stored urls
   let storedWindows = store.windowIds
       .reduce(( lists, wid ) => {
-        const w = store.windows[ wid ];
+        const w = store.state.windows[ wid ];
         let openUrls = '',
             allUrls = '';
-        w.tabs.forEach( tab => {
-          if ( !tab.closed )
-            openUrls += `${ tab.id }:::::${ tab.url }\n`;
-          allUrls += `${ tab.id }:::::${ tab.url }\n`;
+        w.tabIds.forEach( tid => {
+          const t = store.state.tabs[ tid ];
+          if ( !b.closed )
+            openUrls += `${ t.id }:::::${ t.url }\n`;
+          allUrls += `${ t.id }:::::${ t.url }\n`;
         });
         const open = !w.closed;
-        // if (!w.tabIds)
-        //   console.log( 'noTabIds', w );
         lists[ open ? 1 : 0 ].push({
           wid,
           open,
-          tabs: w.tabIds
-             // .filter( tid => !store.tabs[ tid ].closed )
-             .map( tid => ({
-               tid,
-               url: store.tabs[ tid ] && store.tabs[ tid ].url
-             })),
+          tabs: w.tabIds.map( tid => ({
+            tid,
+            url: ( store.state.tabs[ tid ]
+                   && store.state.tabs[ tid ].url )
+          })),
           openUrls,
           allUrls,
         });
@@ -1111,9 +1098,6 @@ async function loadFromUI( ws ) {
         matches.push({ pair, diff });
         return false;
       } else {
-        // if (! scores[ storedWindow.id ])
-        //   scores[ storedWindow.id ] = {};
-        // scores[ storedWindow.id ][ uiWindow.windowId ] = score;
         if ( !pairs[ score ]) {
           pairs[ score ] = []
           scores.push( score );
@@ -1145,7 +1129,7 @@ async function loadFromUI( ws ) {
       if ( !( wid in remainKeys ) || !( windowId in unmatchedKeys ))
         return;
       const uiWindow = unmatchedKeys[ windowId ];
-      if ( closeEnough( uiWindow.tabs.length, diff.length - 1 )) {
+      if ( closeEnough( uiWindow.tabIds.length, diff.length - 1 )) {
         delete remainKeys[ wid ];
         delete unmatchedKeys[ windowId ];
         --remainCount;
@@ -1165,18 +1149,19 @@ async function loadFromUI( ws ) {
   if ( !ws ) {
     const tabs = {};
     remaining.forEach(({ wid }) => {
-      const w = store.windows[ wid ];
+      const w = store.state.windows[ wid ];
       w.closed = true;
       delete w.windowId;
-      w.tabs.forEach( t => {
+      w.tabIds.forEach( tid => {
+        const t = store.state.tabs[ tid ];
         delete t.tabId;
         delete t.windowId;
-        tabs[ t.id ] = t;
+        tabs[ tid ] = t;
       });
       saveWindow(w);
     });
     if ( Object.keys( tabs ).length )
-      b.storage.local.set( tabs );
+      store.setData( tabs );
   }
 }
 ( async () => {
