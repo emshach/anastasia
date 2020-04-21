@@ -28,16 +28,12 @@ export default {
     const b = browser;
     this.port = b.runtime.connect({ name: 'tabcontrol-close-prompt' });
     this.port.onMessage.addListener( m => {
-      if ( m.op === 'showPrompt' )
-        this.showPrompt(m);
-      else
-        console.warn( `'${ m.op }' not yet implemented` );
+      // console.log( 'background => close-prompt', m );
+      const e = `on${m.op}`;
+      if ( this[e] ) this[e](m);
+      else console.warn( `'${ m.op }' not yet implemented` );
     });
 
-    const yes = this.$refs.yes;
-    const no = this.$refs.no;
-
-    console.log( yes, no );
     document.addEventListener( 'keyup', e => {
       // console.log( 'onKeyUp', e );
       if ( e.key === 'y' || e.key === 'Y' ) {
@@ -48,7 +44,11 @@ export default {
     });
   },
   methods:{
-    showPrompt({ tab }) {
+    onLoad({ tabs }) {
+      this.tabs = tabs;
+      console.log( 'tabs', this.tabs );
+    },
+    onAdd({ tab }) {
       this.tabs.unshift( tab );
       console.log( 'tabs', this.tabs );
     },

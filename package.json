@@ -76,7 +76,8 @@
       "prefer-const": "warn",
       "no-trailing-spaces": "warn",
       "object-curly-newline": "off",
-      "arrow-spacing": "warning"
+      "arrow-spacing": "warn",
+      "standard/array-bracket-even-spacing": "warn"
     },
     "overrides": [
       {

@@ -115,6 +115,7 @@ export default {
       background: lightskyblue;
       > a > span {
         height: auto;
+        font-size: 110%;
       }
     }
   }

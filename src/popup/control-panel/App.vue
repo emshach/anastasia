@@ -1,6 +1,6 @@
 <template>
   <div id="app">
-    <tab-project v-for="p in projects" :project=p :key=p.id />
+    <tab-project v-for="p in topProjects" :project=p :key=p.id />
   </div>
 </template>
 
@@ -14,7 +14,7 @@ export default {
   props: {},
   data() {
     return {
-      allProjects: {},
+      projects: {},
       projectIds: [],
       windows: {},
       activeWindow: null,
@@ -30,16 +30,9 @@ export default {
   created() {
     document.title = 'TabControl Panel';
     const b = browser;
-    const port = b.runtime.connect({ name: 'tab-control' });
-    Promise.all([ b.windows.getCurrent(), b.tabs.getCurrent() ])
-       .then(([ win, tab ]) => {
-         this.setWindowId( win.id );
-         this.control = port;
-         port.postMessage({
-           op: 'registerPanel', windowId: win.id, tabId: tab.id });
-         });
+    const port = b.runtime.connect({ name: 'tabcontrol-control-panel' });
     port.onMessage.addListener( m => {
-      // console.log( 'control => panel', m );
+      // console.log( 'background => control-panel', m );
       const e = `on${m.op}`;
       if ( this[e] ) this[e](m);
       else console.warn( `'${ m.op }' not yet implemented` );
@@ -68,10 +61,10 @@ export default {
       this.projectIds.splice( pos + 1, 0, this.projectIds );
     },
     onSuspendProject({ projectId }) {
-      this.allProjects[ projectId ].closed = true;
+      this.projects[ projectId ].closed = true;
     },
     onResumeProject({ projectId }) {
-      this.allProjects[ projectId ].closed = false;
+      this.projects[ projectId ].closed = false;
     },
     onAddWindow({ win, tabs, pos }) {
       const p = this.projects[ win.pid ];
@@ -104,7 +97,7 @@ export default {
       this.windows[ windowId ].collapse = collapse;
     },
     onUpdateTab({ tabId, changes, tab }) {
-      Object.assign( this.tabs[ tabId ], tab );
+      Object.assign( this.tabs[ tabId ], tab || changes );
     },
     onSuspendTab({ tabId }) {
       this.tabs[ tabId ].closed = true;
@@ -138,19 +131,29 @@ export default {
       this.controlActive = false;
       // $( 'html' ).classList.remove( 'active' );
     },
-  },
-  computed: {
-    projects() {
-      return this.projectIds.map( x => Object.assign(
+    onAddProject({ project }) {
+      if ( !this.projects[ project.id ]) {
+        this.projectIds.push( project.id );
+        this.$set( this.projects, project.id, project );
+      }
+    },
+    toFullProject(p) {
+      const project = this.projects[p];
+      return Object.assign(
         {},
-        this.allProjects[x],
-        { windows: this.allProjects[x].windowIds.map( w => Object.assign(
+        project,
+        { windows: project.windowIds.map( w => Object.assign(
           {},
           this.windows[w],
-          { tabs: this.windows[w].tabIds.map( t => this.tabs[t] )}))
+          { tabs: this.windows[w].tabIds.map( t => this.tabs[t] )})),
+          projects: project.projectIds.map( this.toFullProject.bind( this ))
           // TODO: notes etc
         }
-      ));
+      )    }
+  },
+  computed: {
+    topProjects() {
+      return this.projectIds.map( this.toFullProject.bind( this ));
     }
   }
 }
