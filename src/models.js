@@ -1,4 +1,5 @@
 import { urlsToRegexp } from '@/util'
+import state from '@/state'
 
 const idx = {}
 
@@ -37,10 +38,11 @@ export class Model {
     });
   }
 
-  load( obj ) {
+  load( obj, init ) {
     Object.assign( this, this.default, obj )
     if ( !this.id )
       this.id = this.autoId.next()
+    state.add( this, init );
     return this;
   }
 
@@ -75,11 +77,105 @@ export class Project extends Model {
       fields: [ 'name', 'projectIds', 'windowIds' ],
       default: {
         name: 'misc',
+        pid: null,
         projectIds: [],
         windowIds: [],
         // noteId: []
       }
     });
+  }
+
+  get projectList() {
+    return this.projectIds.map( p => state.projects[p] );
+  }
+
+  get windowList() {
+    return this.windowIds.map( p => state.windows[p] );
+  }
+
+  get children() {
+    return this.projectList.concat( this.windowList );
+  }
+
+  get project() {
+    return state.projects[ this.pid ];
+  }
+
+  get parent() {
+    return this.project;
+  }
+
+  addProject( project, pos ) {
+    if ( project.id === this.id ) {
+      console.warn( 'trying to add project to itself! NO!' );
+      return;
+    }
+    const idx = this.projectIds.indexOf( project.id );
+    if ( pos > -1) {
+      if ( idx > -1 ) {
+        if ( idx !== pos ) {
+          this.projectIds.splice( idx, 1 );
+          if ( idx < pos )
+            --pos;
+          this.projectIds.splice( pos, 0, project.id );
+          state.queueModel( this );
+        }
+      } else {
+        this.projectIds.splice( pos, 0, project.id );
+        state.queueModel( this );
+      }
+    } else if ( idx < 0 ) {
+      this.projectIds.push( project.id );
+      state.queueModel( this );
+    }
+    if ( project.pid !== this.id ) {
+      if ( project.pid ) {
+        project.project.removeProject( project );
+      }
+      project.pid = this.id;
+      state.queueModel( project );
+    }
+  }
+
+  removeProject( project ) {
+    this.projectIds.splice( this.projectIds.indexOf( project.id ), 1 );
+    project.pid = null;
+    state.queueModel( this );
+    state.queueModel( project );
+  }
+
+  addWindow( window, pos ) {
+    const idx = this.windowIds.indexOf( window.id );
+    if ( pos > -1) {
+      if ( idx > -1 ) {
+        if ( idx !== pos ) {
+          this.windowIds.splice( idx, 1 );
+          if ( idx < pos )
+            --pos;
+          this.windowIds.splice( pos, 0, window.id );
+          state.queueModel( this );
+        }
+      } else {
+        this.windowIds.splice( pos, 0, window.id );
+        state.queueModel( this );
+      }
+    } else if ( idx < 0 ) {
+      this.windowIds.push( window.id );
+      state.queueModel( this );
+    }
+    if ( window.pid !== this.id ) {
+      if ( window.pid )
+        window.project.removeWindow( window );
+      window.pid = this.id;
+      state.queueModel( window );
+    }
+  }
+
+  removeWindow( window ) {
+    this.windowIds.splice( this.windowIds.indexOf( window.id ), 1 );
+    window.pid = null;
+    state.queueModel( this );
+    state.queueModel( window );
   }
 
   toJson() {
@@ -120,28 +216,62 @@ export class Window extends Model {
         collapsed: true,
         title: 'Window',
         focused: false,
-        tabs: {},
       },
     });
   }
 
+  get tabList() {
+    return this.tabIds.map( t => state.tabs[t] );
+  }
+
+  get children() { return this.tabList; }
+
+  get project() {
+    return state.projects[ this.pid ];
+  }
+
+  get parent() {
+    return this.project;
+  }
+
   addTab( tab, pos ) {
+    const idx = this.tabIds.indexOf( tab.id );
     if ( pos > -1) {
-      this.tabIds.splice( pos, 0, tab.id );
-    } else {
+      if ( idx > -1 ) {
+        if ( idx !== pos ) {
+          this.tabIds.splice( idx, 1 );
+          if ( idx < pos )
+            --pos;
+          this.tabIds.splice( pos, 0, tab.id );
+          state.queueModel( this );
+        }
+      } else {
+        this.tabIds.splice( pos, 0, tab.id );
+        state.queueModel( this );
+      }
+    } else if ( idx < 0 ) {
       this.tabIds.push( tab.id );
+      state.queueModel( this );
     }
-    tab.wid = this.id;
+    if ( tab.wid !== this.id ) {
+      if ( tab.window )
+        tab.window.removeTab( tab );
+      tab.wid = this.id;
+      state.queueModel( tab );
+    }
   }
 
   removeTab( tab ) {
     this.tabIds.splice( this.tabIds.indexOf( tab.id ), 1 );
     tab.wid = null;
+    state.queueModel( this );
+    state.queueModel( tab );
   }
 
   close() {
     this.closed = true;
     this.windowId = null;
+    state.queueModel( this );
   }
 
   toJson() {
@@ -197,15 +327,19 @@ Object.assign( Window, {
     const tabIds = ( await browser.tabs.query({ windowId: win.id })).map( t => {
       const tab = Tab.normalize(t);
       urls.push( tab.url );
-      out.tabs[ tab.id ] = tab;
       return tab.id;
     });
     out.tabIds = tabIds;
     out.tabsMatch = urlsToRegexp( urls );
 
     win = new Window().load( out );
-    for ( const t of Object.values( win.tabs ))
-      t.wid = win.id;
+    for ( const t of win.tabList )
+      if ( t.wid !== win.id ) {
+        t.wid = win.id;
+        state.queueModel(t);
+      }
+    if ( win.project )
+      win.project.addWindow( win ); // just in case
     return win;
   }
 });
@@ -244,11 +378,20 @@ export class Tab extends Model {
     });
   }
 
+  get window() {
+    return state.windows[ this.wid ];
+  }
+
+  get parent() {
+    return this.window;
+  }
+
   close() {
     this.closed = true;
     this.active = false;
     this.tabId = null;
     this.windowId = null;
+    state.queueModel( this );
   }
 
   toJson() {

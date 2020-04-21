@@ -3,15 +3,16 @@ import { controlPanel as cp } from '@/controllers'
 import { windowDiff } from '@/util'
 import { Window } from '@/models'
 
-export function updateWindow( wid, windowId, diff ) {
-  const w = store.state.windows[ wid ];
-  if ( w.windowId !== windowId ) {
-    w.windowId = windowId;
+export function updateWindow( storedWindow, uiWindow, diff ) {
+  const w = storedWindow;
+  const ui = uiWindow;
+  if ( w.windowId !== ui.windowId ) {
+    w.windowId = ui.windowId;
     // post({ op: 'SetWindowId', wid, windowId });
   }
   delete w.closed;
-  store.openWindows[ windowId ] = w;
-  for ( const op of diff ) {
+  store.openWindows[ w.windowId ] = w;
+  diff.forEach( op => {
     let tab, tid, _, after, insert;
     switch ( op[0] ) {
     case 'attach':
@@ -21,16 +22,18 @@ export function updateWindow( wid, windowId, diff ) {
           return;
         }
         store.state.tabs[ tid ].tabId = tabId;
+        if ( store.openTabs[ tabId ])
+          store.removeTab( store.openTabs[ tabId ] );
         store.openTabs[ tabId ] = store.state.tabs[ tid ];
-        // post({ op: 'AttachTab', tid, tabId });
+        cp.post({ op: 'AttachTab', tid, tabId });
       })
       break;
     case 'reopen':
-      for ( const tid of  op[1]) {
+      op[1].forEach( tid => {
         tab = store.state.tabs[ tid ];
         tab.closed = false;
         cp.post({ op: 'ResumeTab', tid });
-      }
+      })
       break;
     case 'close':
       tid = op[1];
@@ -45,7 +48,12 @@ export function updateWindow( wid, windowId, diff ) {
       cp.post({ op: 'AddTab', tab, after });
       break;
     }
-  }
+  });
+  if ( uiWindow.project )
+    uiWindow.project.removeWindow( uiWindow );
+  const wid = uiWindow.id;
+  store.state.remove( uiWindow );
+  store.clearData([ wid ]);
 }
 
 export async function addWindow( win ) {
@@ -63,12 +71,8 @@ export async function addWindow( win ) {
 export async function loadFromUI( ws ) {
   // console.log( 'loadFromUI', ws );
   const closeEnough = ( tabs, diffs ) => ( diffs < 5 && tabs / diffs > 2 );
-  const windows = ( await Promise.all(
-    ( ws || await browser.windows.getAll())
-       .map( Window.normalize )))
-        .filter( w => !store.controlIds[ w.windowId ]);
   // get stored urls
-  const storedWindows = store.windowIds
+  const storedWindows = store.state.windowIds
       .reduce(( lists, wid ) => {
         const w = store.state.windows[ wid ];
         let openUrls = '',
@@ -81,8 +85,9 @@ export async function loadFromUI( ws ) {
         });
         const open = !w.closed;
         lists[ open ? 1 : 0 ].push({
-          wid,
           open,
+          wid,
+          w,
           tabs: w.tabIds.map( tid => ({
             tid,
             url: ( store.state.tabs[ tid ]
@@ -94,6 +99,10 @@ export async function loadFromUI( ws ) {
         return lists;
       }, [ [], [] ])
       .flat();
+  const windows = ( await Promise.all(
+    ( ws || await browser.windows.getAll())
+       .map( Window.normalize )))
+        .filter( w => !store.controlIds[ w.windowId ]);
   const remainKeys = {},
         unmatchedKeys = {},
         matches = [],
@@ -106,11 +115,9 @@ export async function loadFromUI( ws ) {
     let matched = false;
     remaining = remaining.filter( storedWindow => {
       if ( matched ) return true;
-      const pair = {
-        wid: storedWindow.wid,
-        windowId: uiWindow.windowId
-      };
       const diff = windowDiff( storedWindow, uiWindow );
+      storedWindow = storedWindow.w;
+      const pair = { storedWindow, uiWindow };
       const score = diff.length;
       if ( score === 1 ) {                 // then windows match exactly
         matched = true;
@@ -118,7 +125,7 @@ export async function loadFromUI( ws ) {
         return false;
       } else {
         if ( !pairs[ score ]) {
-          pairs[ score ] = []
+          pairs[ score ] = [];
           scores.push( score );
         }
         pairs[ score ].push({ pair, diff });
@@ -129,7 +136,7 @@ export async function loadFromUI( ws ) {
   });
   unmatchedCount = unmatched.length;
   unmatched.forEach( w => {
-    unmatchedKeys[ w.windowId ] = w;
+    unmatchedKeys[ w.id ] = w;
   });
   remainCount = remaining.length;
   remaining.forEach( w => {
@@ -141,43 +148,39 @@ export async function loadFromUI( ws ) {
   scores = scores.sort();
   for ( const score of scores ) {
     if (!unmatchedCount || !remainCount )
-      return;
+      break;
     const options = pairs[ score ];
-    for ( const { pair:{ wid, windowId }, diff } of options ) {
+    for ( const { pair:{ storedWindow, uiWindow }, diff } of options ) {
       // console.log({ wid, windowId, remainKeys, unmatchedKeys });
-      if ( !( wid in remainKeys ) || !( windowId in unmatchedKeys ))
-        return;
-      const uiWindow = unmatchedKeys[ windowId ];
+      if ( !( storedWindow.id in remainKeys )
+           || !( uiWindow.id in unmatchedKeys ))
+        continue;
       if ( closeEnough( uiWindow.tabIds.length, diff.length - 1 )) {
-        delete remainKeys[ wid ];
-        delete unmatchedKeys[ windowId ];
+        delete remainKeys[ storedWindow.id ];
+        delete unmatchedKeys[ uiWindow.id ];
         --remainCount;
         --unmatchedCount;
-        nearMatches.push({ wid, windowId, diff });
+        nearMatches.push({ storedWindow, uiWindow, diff });
       }
     }
   }
-  unmatched = unmatched.filter( x => unmatchedKeys[ x.windowId ]);
+  unmatched = unmatched.filter( x => unmatchedKeys[ x.id ]);
   remaining = remaining.filter( x => remainKeys[ x.wid ]);
   // console.log({ matches, nearMatches, unmatched, scores, pairs });
-  for ( const { pair: { wid, windowId }, diff } of matches)
-    updateWindow( wid, windowId, diff );
-  for ( const { wid, windowId, diff } of nearMatches)
-    updateWindow( wid, windowId, diff );
+  for ( const { pair: { storedWindow, uiWindow }, diff } of matches)
+    updateWindow( storedWindow, uiWindow, diff );
+  for ( const { storedWindow, uiWindow, diff } of nearMatches)
+    updateWindow( storedWindow, uiWindow, diff );
   unmatched.forEach( addWindow );
   if ( !ws ) {
     const updates = {};
-     for ( const win of remaining ) {
-      win.close()
-       for ( const tid of win.tabIds ) {
-        const tab = store.state.tabs[ tid ];
-        tab.close()
-        updates[ tid ] = tab;
-      }
-       updates[ win.id ] = win;
-     }
+    remaining.forEach( win => {
+      win.w.close();
+      updates[ win.id ] = win;
+    });
     store.saveAll( Object.values( updates ));
-  }
+  } else
+    store.save();               // just in case
 }
 
 export default {

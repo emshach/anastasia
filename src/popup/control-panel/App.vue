@@ -48,9 +48,14 @@ export default {
     setWindowId({ windowId }) {
       this.windowId = windowId;
     },
-    onAddProject({ prj, pos }) {
-      this.$set( this.projects, prj.id, prj );
-      this.projectIds.splice( pos, 0, prj.id );
+    onAddProject({ project, pos }) {
+      if ( this.projects[ project.id ])
+        return;
+      this.$set( this.projects, project.id, project );
+      if ( pos < 0 )
+        this.projectIds.push( project.id );
+      else
+        this.projectIds.splice( pos, 0, project.id );
     },
     onRemoveProject({ projectId }) {
       this.$delete( this.projects, projectId );
@@ -131,12 +136,6 @@ export default {
       this.controlActive = false;
       // $( 'html' ).classList.remove( 'active' );
     },
-    onAddProject({ project }) {
-      if ( !this.projects[ project.id ]) {
-        this.projectIds.push( project.id );
-        this.$set( this.projects, project.id, project );
-      }
-    },
     toFullProject(p) {
       const project = this.projects[p];
       return Object.assign(
@@ -149,7 +148,8 @@ export default {
           projects: project.projectIds.map( this.toFullProject.bind( this ))
           // TODO: notes etc
         }
-      )    }
+      );
+    }
   },
   computed: {
     topProjects() {

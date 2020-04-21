@@ -1,4 +1,5 @@
 import { Project, Window, Tab } from '@/models'
+import state from '@/state'
 
 export default {
   panelId: null,
@@ -15,45 +16,13 @@ export default {
   controlTabIds: {},
   recentlyClosed: [],
   loaded: false,
-  projectIds: [],
-  windowIds: [],
-  tabIds: [],
-  // tagIds: [],
-  // noteIds: [],
   controlPanel: null,
   expecting: {
     tab: {},
     window: {},
   },
-  state: {
-    controlActive: false,
-    projects: {},
-    projectIds: [],
-    activeWindow: null,
-    windows: {},
-    tabs: {},
-    tags: {},
-    notes: {}
-  },
-  toJson() {
-    const out = {
-      controlActive: this.controlActive,
-      projects: {},
-      projectIds: this.projectIds,
-      activeWindow: this.activeWindow,
-      windows: {},
-      tabs: {},
-      tags: {},
-      notes: {}
-    }
-    for ( const p of Object.values( this.state.projects ))
-      out.projects[ p.id ] = p.toJson();
-    for ( const w of Object.values( this.state.windows ))
-      out.windows[ w.id ] = w.toJson();
-    for ( const t of Object.values( this.state.tabs ))
-      out.tabs[ t.id ] = t.toJson();
-    return out;
-  },
+  state,
+  toJson: state.toJson.bind( state ),
   async getData( keys ) {
     return browser.storage.local.get( keys )
   },
@@ -70,6 +39,7 @@ export default {
       activeWindow,
       projectIds,
       windowIds,
+      tabIds,
       // tagIds: [],
       // noteIds: [],
     } = await this.getData([
@@ -78,6 +48,7 @@ export default {
       'activeWindow',
       'projectIds',
       'windowIds',
+      'tabIds',
     ]);
     if ( controlPanelOpen !== true && controlPanelOpen !== false )
       controlPanelOpen = false;
@@ -87,6 +58,8 @@ export default {
       projectIds = this.state.projectIds || [];
     if ( !windowIds )
       windowIds = this.state.windowIds || [];
+    if ( !tabIds )
+      tabIds = this.state.tabIds || [];
     if ( !activeWindow )
       activeWindow = this.state.activeWindow || null;
     if ( !projectIds.length ) {
@@ -102,57 +75,52 @@ export default {
       });
     }
     const loaded   = true;
-    const windows  = windowIds  ? await this.getData( windowIds )  : {};
-    const projects = projectIds ? await this.getData( projectIds ) : {};
+    const [ projects, windows, tabs ] = await Promise.all([
+      projectIds ? await this.getData( projectIds ) : {},
+      windowIds  ? await this.getData( windowIds )  : {},
+      tabIds     ? await this.getData( tabIds )     : {},
+    ]);
+
+    console.log( 'loading', { projects, windows, tabs });
+    projectIds = projectIds.filter( p => {
+      const prj = projects[p];
+      if ( prj )
+        new Project().load( projects[p], true );
+      return !!projects[p];
+    });
 
     windowIds = windowIds.filter( w => {
       const win = windows[w]
       if ( win ) {
-        const win = new Window().load( windows[w]);
-        windows[w] = win;
+        const win = new Window().load( windows[w], true );
         if ( !win.pid ) {
-          win.pid = 'project-0';
-          projects[ 'project-0' ].windowIds.push(w);
+          state.projects[ 'project-0' ].addWindow( win );
           this.save( win );
         }
       }
       return !!win;
     });
-    projectIds = projectIds.filter( p => {
-      const prj = projects[p];
-      if ( prj ) {
-        const prj = new Project().load( projects[p] );
-        projects[p] = prj;
-      }
-      return !!projects[p];
-    });
 
-    const tabIds = ( windowIds || [] ).reduce(
-      ( x, y ) => x.concat(( windows[y].tabIds || [] ).filter( t => t ) ), [] );
-
-    // console.log({ windows, windowIds, tabIds });
-    const tabs = await this.getData( tabIds );
-    for ( const t of Object.keys( tabs ))
-      if ( tabs[t] )
+    const liveTabIds = {};
+    for ( const wid of windowIds ) {
+      const w = state.windows[ wid ];
+      for ( const t of w.tabIds )
+        liveTabIds[ t ] = tabs[t];
+    }
+    for ( const t of Object.keys( tabs )) {
+      if ( liveTabIds[t] )
         tabs[t] = new Tab().load( tabs[t] );
+      else
+        delete tabs[t];
+    }
+
     Object.assign( this, {
       loaded,
-      projectIds,
-      windowIds,
-      tabIds,
-      // tagIds,
-      // noteIds,
       controlPanelOpen,
     });
     Object.assign( this.state, {
       controlActive,
-      projects,
-      projectIds,
       activeWindow,
-      windows,
-      tabs,
-      // tags,
-      // notes,
     });
     // garbage collection
     const garbage = [];
@@ -221,17 +189,26 @@ export default {
     });
   },
   save( thing ) {
-    const data = thing.toJson();
-    this.setData({[ thing.id ]: data });
+    const updates = this.state.flush();
+    let data = null;
+    if ( thing ) {
+      data = thing.toJson();
+      updates[ thing.id ] = data;
+    }
+    this.setData( updates );
     return data;
   },
   saveAll( things ) {
     // console.log( 'saving', things );
-    const data = {};
+    const updates = this.state.flush();
+    const data = {}
     for ( const thing of things ) {
-      data[ thing.id ] = thing.toJson();
+      data[ thing.id ] =
+         updates[ thing.id ] =
+         thing.toJson ? thing.toJson() : thing;
     }
-    this.setData( data );
+    console.log( 'writing:', updates );
+    this.setData( updates );
     return data;
   },
   addProject( prj ) {
@@ -258,36 +235,17 @@ export default {
   },
   async addWindow( win ) {
     win = await Window.normalize( win );
-    const save = [ win ];
-    if ( !this.state.windows[ win.id ]) {
-      this.state.windows[ win.id ] = win;
-      this.windowIds.push( win.id );
-      this.setData({ windowIds: this.windowIds }); // TODO: for now
-    }
-    if ( win.tabs ) {
-      for ( const tab of Object.values( win.tabs )) {
-        if ( !this.state.tabs[ tab.id ]) {
-          this.state.tabs[ tab.id ] = tab;
-          this.tabIds.push( tab.id );
-          save.push( tab );
-        }
-      }
-      delete win.tabs;
-    }
-    const p = this.state.projects[ win.pid ];
-    if (p)
-      save.push(p);
-    this.saveAll( save );
+    this.save();
     // FIXME: make this connection happen in the model, separate store and state
     return win;
   },
-  removeindow( win ) {
+  removeWindow( win ) {
     this.clearData(( win.tabIds.map( tid => {
-      delete this.state.tabs[ tid ];
+      this.state.remove( this.state.tabs[ tid ]);
       return tid;
     }).concat( win.id )));
     delete this.openWindows[ win.windowId ];
-    delete this.state.windows[ win.id ];
+    this.state.remove( win );
     return win;
   },
   addTab( tab, win, pos ) {
@@ -295,7 +253,6 @@ export default {
     if ( win ) {
       win.addTab( tab, pos )
     }
-    this.state.tabs[ tab.id ] = tab;
     if ( tab.tabId )
       this.openTabs[ tab.tabId ] = tab;
     this.save( tab );
@@ -305,11 +262,12 @@ export default {
     if ( this.openTabs[ tab.tabId ]) {
       delete this.openTabs[ tab.tabId ];
       browser.tabs.remove( tab.tabId );
-      if ( tab.win )
-        tab.win.removeTab( tab );
+      if ( tab.window )
+        tab.window.removeTab( tab );
     }
     this.clearData( tab.id );
-    delete this.state.tabs[ tab.id ];
+    this.state.remove( tab );
+    this.save();
     return tab;
   },
   autoRemoveTab( tab ) {

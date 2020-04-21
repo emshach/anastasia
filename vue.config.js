@@ -114,6 +114,7 @@ module.exports = {
         from: path.join( __dirname, 'src/background.html' ),
         to: path.join( __dirname, 'dist/background.html' ),
       }])
-    ]
+    ],
+    devtool: 'source-map'
   },
 }

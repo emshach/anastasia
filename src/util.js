@@ -36,13 +36,13 @@ export function windowDiff( storedWindow, uiWindow ) {
         closedCount += urls.length;
       }
     });
-    // console.log({ m, found, closed, unknown, foundCount, closedCount });
+    console.log({ m, found, closed, unknown, foundCount, closedCount });
     return { found, closed, unknown, foundCount, closedCount };
   };
   const rx = uiWindow.tabsMatch;
   const open = storedWindow.openUrls.match( rx );
   const all = storedWindow.allUrls.match( rx );
-  const tabs = uiWindow.tabIds.map( t => uiWindow.tabs[t] );
+  const tabs = uiWindow.tabList;
   // console.log({ rx, open, all, tabs });
   let d = parseData( open, tabs ),
       allData;
