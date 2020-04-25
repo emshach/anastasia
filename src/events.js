@@ -2,6 +2,8 @@ import store from '@/data'
 import { controlPanel as cp, closePrompt } from '@/controllers'
 import { loadFromUI } from '@/actions'
 
+const TAB_UPDATE_DELAY = 500;
+
 export async function onWindowCreated( win ) {
   // console.log( 'onWindowCreated', win );
   if ( store.controlIds[ win.id ])
@@ -74,7 +76,7 @@ export async function onWindowFocused( winId ) {
 }
 
 export async function onTabCreated( tab ) {
-  // console.log( 'onTabCreated', tab );
+  console.log( 'onTabCreated', tab );
   const tabId = tab.id;
   if ( store.controlTabIds[ tabId ]) {
     // console.log( 'control panel tab, ignoring' );
@@ -90,10 +92,10 @@ export async function onTabCreated( tab ) {
     const w = store.openWindows[ tab.windowId ];
     if (!w)
       return;
+    console.log( 'processing onTabCreated', tab, w );
     let pos = -1;
     if ( tab.index >= w.tabIds.length ) {
-      tab = store.addTab( tab );
-      w.tabIds.push( tab.id );
+      tab = store.addTab( tab, w, pos );
     } else {
       let potentials = [];
       pos = 0;
@@ -154,13 +156,11 @@ export async function onTabCreated( tab ) {
           });
         return;
       }
-      store.addTab( tab, w, pos );
+      tab = store.addTab( tab, w, pos );
     }
-    store.state.tabs[ tab.id ] = tab;
-    store.openTabs[ tab.tabId ] = tab;
     tab = store.saveAll([ w, tab ])[ tab.id ];
     cp.post({ op: 'AddTab', tab, pos });
-  }, 2000 );
+  }, TAB_UPDATE_DELAY );
 }
 
 export async function onTabUpdated( tabId, changes ) {
@@ -207,7 +207,7 @@ export async function onTabFocused({ previousTabId, tabId, windowId }) {
     windowId = w.id;
     tab.active = true;
     store.save( tab );
-    cp.post({ op: 'FocusTab', previousTabId, tabId, windowId });
+    cp.post({ op: 'FocusTab', tabId, windowId });
   }
 }
 export function onTabRemoved( tabId, { windowId, isWindowClosing }) {

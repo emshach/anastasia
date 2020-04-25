@@ -235,6 +235,8 @@ export default {
   },
   async addWindow( win ) {
     win = await Window.normalize( win );
+    if ( win.windowId )
+      this.openWindows[ win.windowId ] = win;
     this.save();
     // FIXME: make this connection happen in the model, separate store and state
     return win;

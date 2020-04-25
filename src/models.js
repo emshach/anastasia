@@ -38,10 +38,19 @@ export class Model {
     });
   }
 
+  init() {
+    this.model_registry = state[ this.model_name + 's' ];
+  }
+
   load( obj, init ) {
     Object.assign( this, this.default, obj )
-    if ( !this.id )
-      this.id = this.autoId.next()
+    if ( !this.id ) {
+      this.id = this.autoId.next();
+      while ( this.id in this.model_registry )
+        this.id = this.autoId.next();
+      // Feel like I shouldn't have to do this but some weird bug show's it's
+      // probably better to just make sure anyway
+    }
     state.add( this, init );
     return this;
   }
@@ -83,6 +92,7 @@ export class Project extends Model {
         // noteId: []
       }
     });
+    this.init();
   }
 
   get projectList() {
@@ -218,6 +228,7 @@ export class Window extends Model {
         focused: false,
       },
     });
+    this.init();
   }
 
   get tabList() {
@@ -376,6 +387,7 @@ export class Tab extends Model {
         status: null
       },
     });
+    this.init();
   }
 
   get window() {

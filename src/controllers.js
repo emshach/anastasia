@@ -43,6 +43,7 @@ export class Controller {
     }
     this.port = port
     if (! this.onConnect( port )) {
+      this.windowId = port.sender.tab.windowId;
       this.port = null;
       return;
     }
@@ -79,12 +80,20 @@ export class Controller {
     if ( this.opening )
       return;
     this.opening = true;
-    b.windows.create( this.window() ).then( w => {
+    const spec = this.window();
+    b.windows.create( spec ).then( w => {
       // console.log( 'control panel:', w );
       if ( w.focused )
         store.state.controlActive = true;
       store.controlIds[ w.id ] = this;
-      b.windows.update( w.id, { left: 0, top: 0 });
+      if (( 'left' in spec ) || ( 'top' in spec )) {
+        const pos = {};
+        if ( 'left' in spec )
+          pos.left = spec.left || 0;
+        if ( 'top' in spec )
+          pos.top = spec.top || 0;
+        b.windows.update( w.id, pos );
+      }
       this.opening = false;
     }).catch( err => {
       console.warn( 'could not create window!', err );
@@ -100,12 +109,14 @@ export class Controller {
   _onClose() {
     if ( this.windowId ) {
       delete store.controlIds[ this.windowId ];
-      this.ready = false;
       this.windowId = null;
     }
+    this.ready = false;
     this.tabId = null;
-    this.port.disconnect();
-    this.port = null;
+    if ( this.port ) {
+      this.port.disconnect();
+      this.port = null;
+    }
   }
 
   window() {}
@@ -116,17 +127,13 @@ export class Controller {
 
   onReady() {}
 
-  onConnect() {}
+  onConnect() { return true; }
 
   onDisconnect() {}
 }
 
 export const controlPanel = new Controller({
   name: 'control-panel',
-  onConnect( port ) {
-    this.windowId = port.sender.tab.windowId;
-    return true;
-  },
   onReady() {
     if ( this.loaddata ) {
       this.post({ op: 'Load', state: this.loaddata });
@@ -411,27 +418,39 @@ export const controlPanel = new Controller({
       this.post({ op: 'RemoveProject', projectId });
     },
     moveProject({ projectId }) {
-    }
+    },
     // createTab({ tabId }) {
     // },
     // moveTab({ tabId, windowId, pos }) {
     // }
+    // control panel update functions
+    editWindow({ windowId, updates }) {
+      const w = store.state.windows[ windowId ];
+      if (!w) return;
+      Object.assign( updates );  // for now
+      store.save(w);
+      this.post({ op: 'UpdateWindow', windowId: w.id, changes: updates });
+    },
+    editTab({ tabId, updates }) {
+      const t = store.state.tabs[ tabId ];
+      if (!t) return;
+      Object.assign( updates );  // for now
+      store.save(t);
+      this.post({ op: 'UpdateTab', tabId: t.id, changes: updates });
+    }
   }
 });
 export const closePrompt = new Controller({
   name: 'close-prompt',
-  onConnect() {
+  onReady() {
     const tabs = store.recentlyClosed.splice(0);
     // console.log( 'close-prompt tabs', tabs, store.recentlyClosed );
-      store.prompt.postMessage({ op: 'Load', tabs });
-    return true;
+    this.post({ op: 'Load', tabs });
   },
   window() {
     return {
       type: 'popup',
       url: 'close-prompt.html',
-      left: 0,
-      top: 0,
       width: 320,
       height: 152,
       allowScriptsToClose: true,
@@ -441,6 +460,9 @@ export const closePrompt = new Controller({
     removeTab( msg ) { controlPanel.removeTab( msg ) },
     add( tab ) {
       this.post({ op: 'Add', tab });
+    },
+    done() {
+      this.close();
     }
   }
 });

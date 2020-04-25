@@ -1,7 +1,10 @@
 <template>
   <div class="window active">
     <div class="prompt"> Did you want to keep that tab?</div>
-    <tab-item :tab=tab />
+    <tab-item :tab=tab :focus=true >
+      <template #ctrl-before ><div /></template>
+      <template #ctrl-after ><div /></template>
+    </tab-item>
     <div style="display:flex;">
       <button style="flex:1;" ref="yes" type="button"
               @click.prevent=keepTab >Yes</button>
@@ -28,7 +31,7 @@ export default {
     const b = browser;
     this.port = b.runtime.connect({ name: 'tabcontrol-close-prompt' });
     this.port.onMessage.addListener( m => {
-      // console.log( 'background => close-prompt', m );
+      console.log( 'background => close-prompt', m );
       const e = `on${m.op}`;
       if ( this[e] ) this[e](m);
       else console.warn( `'${ m.op }' not yet implemented` );
@@ -65,7 +68,7 @@ export default {
       console.log( 'popTab!', this.port );
       this.tabs.shift();
       if ( !this.tabs.length ) {
-        this.port.postMessage({ op: 'closePrompt' })
+        this.port.postMessage({ op: 'done' })
       }
     }
   },

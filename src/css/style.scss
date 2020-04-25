@@ -20,3 +20,43 @@ a, a:visited, a:active, a:hover {
   color: lightskyblue;
   text-decoration: none !important;
 }
+.btn {
+  display: block;
+}
+.close-btn {
+  width: 16px;
+  height: 16px;
+  > img {
+    fill: lightskyblue;
+  }
+}
+
+.fade {
+  &-enter-active, &Z-leave-active {
+    transition: opaacity 300ms;
+  }
+  &-enter, &-leave-to {
+    opacity: 0;
+  }
+}
+.ctrl-before, .ctrl-after {
+  opacity: 0;
+  display: flex;
+  .btn {
+    margin: 0;
+    padding: 4px;
+    &:hover {
+      background-color: rgba(255,255,255,0.35);
+    }
+  }
+}
+.header input {
+  width: 100%;
+  border: 0 none;
+  border-bottom: 3px solid black;
+  color: black;
+  background: transparent;
+  opacity: 0.65;
+  padding: 4px;
+  box-sizing: border-box;
+}

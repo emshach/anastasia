@@ -6,7 +6,8 @@
       <div class="ctrl-after"><slot name="ctrl-after" /></div>
     </div>
     <div class="body">
-      <tab-window v-for="w in project.windows" :window=w :key=w.id />
+      <tab-window v-for="w in project.windows" :window=w :key=w.id 
+                  @ctrl=pass />
     </div>
     <div class="footer">
     </div>
@@ -31,7 +32,11 @@ export default {
   },
   created() {},
   mounted() {},
-  methods: {},
+  methods: {
+    pass(e) {
+      this.$emit( 'ctrl', e );
+    }
+  },
   computed: {}
 }
 </script>
@@ -48,6 +53,10 @@ export default {
   }
   > .body {
     padding-left: 4px;
+  }
+  &:hover > .header {
+    color: lightskyblue;
+    border-bottom-color: lightskyblue;
   }
 }
 </style>
