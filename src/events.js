@@ -18,7 +18,7 @@ export async function onWindowCreated( win ) {
     const w = !store.controlIds[ win.id ] && store.openWindows[ win.id ];
     if ( !w ) return;
     win = store.save(w)
-    cp.post({ op: 'AddWindow', win });
+    cp.send( 'AddWindow', { win });
   }, 750 );
 }
 
@@ -35,7 +35,7 @@ export function onWindowRemoved( winId ) {
   w.closed = true;
   w.windowId = null;
   store.save(w);
-  cp.post({ op: 'SuspendWindow', windowId });
+  cp.send( 'SuspendWindow', { windowId });
 }
 
 export async function onWindowFocused( winId ) {
@@ -44,12 +44,12 @@ export async function onWindowFocused( winId ) {
   await ready();
   if ( winId === cp.windowId ) {
     store.state.controlActive = true;
-    cp.post({ op: 'FocusControl' });
+    cp.send( 'FocusControl', {});
     return;
   }
   const w = store.openWindows[ winId ];
   if ( !w ) {
-    cp.post({ op: 'BlurControl' });
+    cp.send( 'BlurControl', {});
     return;
   }
   const windowId = w.id;
@@ -72,7 +72,7 @@ export async function onWindowFocused( winId ) {
   }
   store.state.activeWindow = w;
   store.state.controlActive = false;
-  cp.post({ op: 'FocusWindow', windowId });
+  cp.send( 'FocusWindow', { windowId });
 }
 
 export async function onTabCreated( tab ) {
@@ -147,10 +147,9 @@ export async function onTabCreated( tab ) {
         });
         store.openTabs[ tabId ] = match;
         store.save( match );
-        cp.post({ op: 'ResumeTab', tabId: tid });
+        cp.send( 'ResumeTab', { tabId: tid });
         if ( match.active )
-          cp.post({
-            op: 'FocusTab',
+          cp.send( 'FocusTab', {
             tabId: tid,
             windowId: match.wid
           });
@@ -159,7 +158,7 @@ export async function onTabCreated( tab ) {
       tab = store.addTab( tab, w, pos );
     }
     tab = store.saveAll([ w, tab ])[ tab.id ];
-    cp.post({ op: 'AddTab', tab, pos });
+    cp.send( 'AddTab', { tab, pos });
   }, TAB_UPDATE_DELAY );
 }
 
@@ -183,7 +182,7 @@ export async function onTabUpdated( tabId, changes ) {
   }
   store.save( tab );
   tabId = tab.id;
-  cp.post({ op: 'UpdateTab', tabId, changes, tab });
+  cp.send( 'UpdateTab', { tabId, changes, tab });
 }
 
 export async function onTabFocused({ previousTabId, tabId, windowId }) {
@@ -201,13 +200,13 @@ export async function onTabFocused({ previousTabId, tabId, windowId }) {
     prev.active = false;
     tab.active = true;
     store.saveAll([ prev, tab ]);
-    cp.post({ op: 'FocusTab', previousTabId, tabId, windowId });
+    cp.send( 'FocusTab', { previousTabId, tabId, windowId });
   } else {
     tabId = tab.id;
     windowId = w.id;
     tab.active = true;
     store.save( tab );
-    cp.post({ op: 'FocusTab', tabId, windowId });
+    cp.send( 'FocusTab', { tabId, windowId });
   }
 }
 export function onTabRemoved( tabId, { windowId, isWindowClosing }) {
@@ -240,7 +239,7 @@ export function onTabRemoved( tabId, { windowId, isWindowClosing }) {
   tab.close();
   delete store.openTabs[ tabId ];
   store.save( tab );
-  cp.post({ op: 'SuspendTab', tabId: tab.id });
+  cp.send( 'SuspendTab', { tabId: tab.id });
 }
 
 export function onCommand( command ) {

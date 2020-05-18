@@ -5,9 +5,8 @@ const b = browser;
 const ports = {};
 
 export class Controller {
-  constructor({ name, state, handlers, onConnect, onDisconnect, onMessage,
-                window,
-                onReady, onOpen, onClose }) {
+  constructor({ name, state, handlers, window,
+                onConnect, onDisconnect, onMessage, onReady, onOpen, onClose }) {
     Object.assign( this, {
       name,
       port_name: `tabcontrol-${ name }`,
@@ -54,7 +53,8 @@ export class Controller {
     this.onReady();
   }
 
-  post( msg ) {
+  send( op, msg ) {
+    msg.op = op;
     if ( this.port && this.ready )
       this.port.postMessage( msg );
   }
@@ -136,7 +136,7 @@ export const controlPanel = new Controller({
   name: 'control-panel',
   onReady() {
     if ( this.loaddata ) {
-      this.post({ op: 'Load', state: this.loaddata });
+      this.send( 'Load', { state: this.loaddata });
       delete this.loaddata;
     } else if ( store.loaded ) {
       this.load( store.toJson() )
@@ -156,7 +156,7 @@ export const controlPanel = new Controller({
   handlers: {
     load( state ) {
       if ( this.ready )
-        this.post({ op: 'Load', state });
+        this.send( 'Load', { state });
       else
         this.loaddata = state;
     },
@@ -174,7 +174,7 @@ export const controlPanel = new Controller({
           windowId: null
         });
         store.save( tab );
-        this.post({ op: 'SuspendTab', tabId });
+        this.send( 'SuspendTab', { tabId });
       }
     },
     removeTab({ tabId }) {
@@ -185,7 +185,7 @@ export const controlPanel = new Controller({
         w.tabIds.splice( tix, 1 );
       }
       store.removeTab( tab )
-      this.post({ op: 'RemoveTab', tabId });
+      this.send( 'RemoveTab', { tabId });
       if (w) {
         console.log( 'tab removed', w );
         if ( !w.tabIds.length )
@@ -251,7 +251,7 @@ export const controlPanel = new Controller({
             } : () => {} );
         }
       });
-      this.post({ op: 'ResumeTab', tabId });
+      this.send( 'ResumeTab', { tabId });
     },
     attachTab({ tid, tabId }) {
       const tab = store.state.tabs[ tid ];
@@ -273,7 +273,7 @@ export const controlPanel = new Controller({
           store.save(w);
         }
         store.removeTab( winTab );
-        this.post({ op: 'RemoveTab', tabId: winTab.id });
+        this.send( 'RemoveTab', { tabId: winTab.id });
       }
       store.openTabs[ tabId ] = tab;
       tab.tabId = tabId;
@@ -286,7 +286,7 @@ export const controlPanel = new Controller({
         this.removeWindow({ windowId }); // TODO: ask for confirmation if many tabs
       } else {
         b.windows.remove( w.windowId );
-        this.post({ op: 'SuspendWindow', windowId });
+        this.send( 'SuspendWindow', { windowId });
       }
     },
     removeWindow({ windowId }) {
@@ -310,7 +310,7 @@ export const controlPanel = new Controller({
         store.setData({ windowIds: store.windowIds });
         store.clearData( w.id );
       }
-      this.post({ op: 'RemoveWindow', windowId: w.id });
+      this.send( 'RemoveWindow', { windowId: w.id });
     },
     focusWindow({ windowId }) {
       const w = store.state.windows[ windowId ];
@@ -360,7 +360,7 @@ export const controlPanel = new Controller({
               controlActive ? () => {
                 b.windows.update( store.panelId, { focused: true });
               } : () => {} );
-            this.post({ op: 'FocusWindow', windowId: w.id });
+            this.send( 'FocusWindow', { windowId: w.id });
           }
           store.save(w);
         });
@@ -380,12 +380,12 @@ export const controlPanel = new Controller({
               controlActive ? () => {
                 b.windows.update( store.panelId, { focused: true });
               } : () => {} );
-            this.post({ op: 'FocusWindow', windowId: w.id });
+            this.send( 'FocusWindow', { windowId: w.id });
           }
           store.save(w);
         });
       }
-      this.post({ op: 'ResumeWindow', windowId: w.id });
+      this.send( 'ResumeWindow', { windowId: w.id });
     },
     attachWindow({ wid, windowId }) {
       const w = store.state.windows[ wid ];
@@ -403,19 +403,18 @@ export const controlPanel = new Controller({
       const w = store.state.windows[ windowId ];
       w.collapsed = !w.collapsed;
       store.save(w);
-      this.post({
-        op: 'SetWindowCollapse',
+      this.send( 'SetWindowCollapse', {
         windowId: w.id,
         collapse:w.collapsed
       });
     },
     addProject({ project }) {
       project = store.addProject( project );
-      this.post({ op: 'AddProject', project });
+      this.send( 'AddProject', { project });
     },
     removeProject({ projectId }) {
       store.removeProject( projectId );
-      this.post({ op: 'RemoveProject', projectId });
+      this.send( 'RemoveProject', { projectId });
     },
     moveProject({ projectId }) {
     },
@@ -429,14 +428,14 @@ export const controlPanel = new Controller({
       if (!w) return;
       Object.assign( updates );  // for now
       store.save(w);
-      this.post({ op: 'UpdateWindow', windowId: w.id, changes: updates });
+      this.send( 'UpdateWindow', { windowId: w.id, changes: updates });
     },
     editTab({ tabId, updates }) {
       const t = store.state.tabs[ tabId ];
       if (!t) return;
       Object.assign( updates );  // for now
       store.save(t);
-      this.post({ op: 'UpdateTab', tabId: t.id, changes: updates });
+      this.send( 'UpdateTab', { tabId: t.id, changes: updates });
     }
   }
 });
@@ -445,7 +444,7 @@ export const closePrompt = new Controller({
   onReady() {
     const tabs = store.recentlyClosed.splice(0);
     // console.log( 'close-prompt tabs', tabs, store.recentlyClosed );
-    this.post({ op: 'Load', tabs });
+    this.send( 'Load', { tabs });
   },
   window() {
     return {
@@ -459,7 +458,7 @@ export const closePrompt = new Controller({
   handlers: {
     removeTab( msg ) { controlPanel.removeTab( msg ) },
     add( tab ) {
-      this.post({ op: 'Add', tab });
+      this.send( 'Add', { tab });
     },
     done() {
       this.close();

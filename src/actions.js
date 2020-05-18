@@ -25,27 +25,27 @@ export function updateWindow( storedWindow, uiWindow, diff ) {
         if ( store.openTabs[ tabId ])
           store.removeTab( store.openTabs[ tabId ] );
         store.openTabs[ tabId ] = store.state.tabs[ tid ];
-        cp.post({ op: 'AttachTab', tid, tabId });
+        cp.send( 'AttachTab', { tid, tabId });
       })
       break;
     case 'reopen':
       op[1].forEach( tid => {
         tab = store.state.tabs[ tid ];
         tab.closed = false;
-        cp.post({ op: 'ResumeTab', tid });
+        cp.send( 'ResumeTab', { tid });
       })
       break;
     case 'close':
       tid = op[1];
       tab = store.state.tabs[ tid ];
       tab.closed = true;
-      cp.post({ op: 'SuspendTab', tid });
+      cp.send( 'SuspendTab', { tid });
       break;
     case 'new':
       [ _, after, insert ] = op;
       tab = store.addTab( insert);
       after = store.openTabs[ after ].toJson();
-      cp.post({ op: 'AddTab', tab, after });
+      cp.send( 'AddTab', { tab, after });
       break;
     }
   });
@@ -65,7 +65,7 @@ export async function addWindow( win ) {
     pos = p.windowIds.length;
     p.windowIds.push( win.id );
   }
-  cp.post({ op: 'AddWindow', win, tabs, pos });
+  cp.send( 'AddWindow', { win, tabs, pos });
 }
 
 export async function loadFromUI( ws ) {
