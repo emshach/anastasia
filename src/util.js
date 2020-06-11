@@ -42,7 +42,7 @@ export function windowDiff( storedWindow, uiWindow ) {
   const rx = uiWindow.tabsMatch;
   const open = storedWindow.openUrls.match( rx );
   const all = storedWindow.allUrls.match( rx );
-  const tabs = uiWindow.tabList;
+  const tabs = uiWindow.tabIds.map( tid => store.state.tabs[ tid ]);
   // console.log({ rx, open, all, tabs });
   let d = parseData( open, tabs ),
       allData;
@@ -81,7 +81,23 @@ export function windowDiff( storedWindow, uiWindow ) {
   return out;
 }
 
+export function findOpenPos( win, pos ) {
+  const tabIds = win.tabIds;
+  const tabs = tabIds.map( tid => store.state.tabs[ tid ]);
+  let open = 0;
+  tabs.find(( x, i ) => {
+    if ( x.closed ) return false;
+    if ( open === pos ) {
+      return true;
+    }
+    ++open;
+    return false;
+  });
+  return open;
+}
+
 export default {
   urlsToRegexp,
   windowDiff,
+  findOpenPos,
 }

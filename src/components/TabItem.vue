@@ -198,7 +198,7 @@ export default {
   &.discarded > .inner > a {
     color: #aaa;
   }
-  .active &, &.focus, &:hover, &.selected {
+  .active &.active, &.focus, &:hover, &.selected {
     > .inner {
       /* background: rgba(255,255,255,0.15); */
       color: black;
@@ -210,15 +210,20 @@ export default {
       .space {
         flex: 1;
       }
-      > a > span {
-        height: auto;
-        font-size: 110%;
+      > a {
+        color: black;
+        > span {
+          color: black;
+          height: auto;
+          font-size: 110%;
+        }
       }
       .ctrl-before {
         position: absolute;
         align-self: end;
         opacity: 1;
         .close-btn {
+          padding: 1px 4px;
           right: 0;
         }
       }

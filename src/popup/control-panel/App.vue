@@ -103,9 +103,9 @@ export default {
     },
     onFocusWindow({ windowId }) {
       let w = this.windows[ this.activeWindow ];
-      if (w) w.active = false;
+      if (w) w.focused = false;
       w = this.windows[ windowId ];
-      w.active = true;
+      w.focused = true;
       this.activeWindow = windowId;
     },
     onSetWindowCollapse({ windowId, collapse }) {

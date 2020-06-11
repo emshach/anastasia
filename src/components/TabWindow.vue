@@ -1,5 +1,5 @@
 <template lang="html">
-  <div class="tab-window">
+  <div :class=classes @click=selectWindow >
     <div :class="['header', editing ? 'editing' : '']">
       <transition name="fade" mode="out-in">
         <div v-if="editing" class="inner" key="edit">
@@ -48,10 +48,11 @@
       </transition>
     </div>
     <div class="body">
-      <transition-group name="fade" tag="div">
+      <transition-group name="list" tag="div" class="tablist">
         <tab-item v-for="( t, i ) in window.tabs" :tab=t :key=t.id
                   :opening="tabState[i].opening"
                   :closing="tabState[i].closing"
+                  class="tabitem-test"
                   @ctrl=pass />
       </transition-group>
     </div>
@@ -62,6 +63,7 @@
 
 <script lang="js">
 import TabItem from '@/components/TabItem'
+import state from '@/control-panel/state'
 
 export default {
   name: 'TabWindow',
@@ -103,6 +105,10 @@ export default {
     closeWindow() {
       this.$emit( 'ctrl', { op: 'closeWindow', windowId: this.window.id });
     },
+    selectWindow() {
+      console.log( 'selecting window', this.window );
+      state.setFocus( this.window );
+    },
     pass(e) {
       this.$emit( 'ctrl', e );
     }
@@ -119,6 +125,16 @@ export default {
         last = cr;
         return { opening, closing };
       });
+    },
+    classes() {
+      return [{
+          'tab-window': true,
+          collapsed: this.window.collapsed,
+          active: this.window.focused,
+        },
+        `state-${this.window.state}`,
+        `type-${this.window.type}`,
+      ];
     }
   }
 }
@@ -127,6 +143,7 @@ export default {
 <style lang="scss">
 .tab-window {
   > .header {
+    color: grey;
     font-weight: bold;
     padding: 4px;
     transition: 140ms;
@@ -138,6 +155,9 @@ export default {
       height: 100%;
       display: flex;
       flex-direction: column;
+      a, a:visited, a:active, a:hover {
+        color: grey;
+      }
     }
     .ctrl-before {
       transition: 300ms;
@@ -158,6 +178,12 @@ export default {
     }
     .space {
       flex: 1;
+    }
+  }
+  &.active > .header {
+    color: lightskyblue;
+    a, a:visited, a:active, a:hover {
+      color: lightskyblue;
     }
   }
   > .body {

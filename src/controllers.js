@@ -142,6 +142,13 @@ export const controlPanel = new Controller({
       this.load( store.toJson() )
     }
   },
+  onOpen() {
+    store.setData({ controlPanelOpen: true });
+  },
+  onClose() {
+    this._onClose();
+    store.setData({ controlPanelOpen: false });
+  },
   window() {
     return {
       type: 'detached_panel',
@@ -457,6 +464,8 @@ export const closePrompt = new Controller({
   },
   handlers: {
     removeTab( msg ) { controlPanel.removeTab( msg ) },
+    archiveTab( msg ) {},
+    moveTab( msg ) {},
     add( tab ) {
       this.send( 'Add', { tab });
     },

@@ -237,6 +237,11 @@ export default {
     win = await Window.normalize( win );
     if ( win.windowId )
       this.openWindows[ win.windowId ] = win;
+    for ( const tid of win.tabIds ) {
+      const tab = this.state.tabs[ tid ];
+      if ( !tab ) continue;
+      this.openTabs[ tab.tabId ] = tab;
+    }
     this.save();
     // FIXME: make this connection happen in the model, separate store and state
     return win;
@@ -250,7 +255,11 @@ export default {
     this.state.remove( win );
     return win;
   },
+  cleanupWindow( win ) {
+    return !win.tabIds.length && this.removeWindow( win );
+  },
   addTab( tab, win, pos ) {
+    console.log( 'addTab', { tab, win, pos });
     tab = Tab.normalize( tab );
     if ( win ) {
       win.addTab( tab, pos )

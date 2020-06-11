@@ -5,10 +5,16 @@ import events, {
   onWindowCreated,
   onWindowRemoved,
   onWindowFocused,
+  onTabActivated,
+  onTabAttached,
   onTabCreated,
-  onTabUpdated,
-  onTabFocused,
+  onTabDetached,
+  onTabHighlighted,
+  onTabMoved,
   onTabRemoved,
+  onTabReplaced,
+  onTabUpdated,
+  onTabZoomChanged,
   onCommand,
   ready,
 } from '@/events'
@@ -22,10 +28,17 @@ ready().then(() => {
   browser.windows.onCreated.addListener( onWindowCreated );
   browser.windows.onRemoved.addListener( onWindowRemoved );
   browser.windows.onFocusChanged.addListener( onWindowFocused );
+  browser.tabs.onActivated.addListener( onTabActivated );
+  browser.tabs.onAttached.addListener( onTabAttached );
   browser.tabs.onCreated.addListener( onTabCreated );
-  browser.tabs.onUpdated.addListener( onTabUpdated );
+  browser.tabs.onDetached.addListener( onTabDetached );
+  browser.tabs.onHighlighted.addListener( onTabHighlighted );
+  browser.tabs.onMoved.addListener( onTabMoved );
   browser.tabs.onRemoved.addListener( onTabRemoved );
-  browser.tabs.onActivated.addListener( onTabFocused );
+  browser.tabs.onReplaced.addListener( onTabReplaced );
+  browser.tabs.onUpdated.addListener( onTabUpdated );
+  if ( browser.tabs.onZoomChanged )
+    browser.tabs.onZoomChanged.addListener( onTabZoomChanged );
   if ( browser.commands )
     browser.commands.onCommand.addListener( onCommand );
 });

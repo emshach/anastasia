@@ -43,7 +43,7 @@ export function updateWindow( storedWindow, uiWindow, diff ) {
       break;
     case 'new':
       [ _, after, insert ] = op;
-      tab = store.addTab( insert);
+      tab = store.addTab( insert );
       after = store.openTabs[ after ].toJson();
       cp.send( 'AddTab', { tab, after });
       break;
@@ -69,7 +69,7 @@ export async function addWindow( win ) {
 }
 
 export async function loadFromUI( ws ) {
-  // console.log( 'loadFromUI', ws );
+  console.log( 'loadFromUI', ws );
   const closeEnough = ( tabs, diffs ) => ( diffs < 5 && tabs / diffs > 2 );
   // get stored urls
   const storedWindows = store.state.windowIds
@@ -103,6 +103,7 @@ export async function loadFromUI( ws ) {
     ( ws || await browser.windows.getAll())
        .map( Window.normalize )))
         .filter( w => !store.controlIds[ w.windowId ]);
+  console.log({ windows });
   const remainKeys = {},
         unmatchedKeys = {},
         matches = [],
