@@ -1,5 +1,6 @@
 export default {
   updates: {},
+  transactions: {},
   dirty: false,
   controlActive: false,
   projects: {},
@@ -24,16 +25,16 @@ export default {
       tags: {},
       notes: {}
     }
-    for ( const p of this.projectIds )
-      out.projects[ p ] = this.projects[p].toJson();
-    for ( const p of this.windowIds )
-      out.windows[ p ] = this.windows[p].toJson();
-    for ( const p of this.tabIds )
-      out.tabs[ p ] = this.tabs[p].toJson();
-    // for ( const p of this.tagIds )
-    //   out.tags[ p ] = this.tags[p].toJson();
-    // for ( const p of this.noteIds )
-    //   out.notes[ p ] = this.notes[p].toJson();
+    for ( const k of this.projectIds )
+      out.projects[k] = this.projects[k].toJson();
+    for ( const k of this.windowIds )
+      out.windows[k] = this.windows[k].toJson();
+    for ( const k of this.tabIds )
+      out.tabs[ k ] = this.tabs[k].toJson();
+    // for ( const k of this.tagIds )
+    //   out.tags[ k ] = this.tags[k].toJson();
+    // for ( const k of this.noteIds )
+    //   out.notes[ k ] = this.notes[k].toJson();
     return out;
   },
   queue( obj ) {
@@ -52,10 +53,10 @@ export default {
   },
   add( model, init ) {
     if ( !model ) return;
-    const registry = this[ model.model_name + 's' ];
+    const registry = this[ model.modelName + 's' ];
     if ( !registry )
       return;
-    const idx = model.model_name + 'Ids';
+    const idx = model.modelName + 'Ids';
     const regIds = this[ idx ];
     if ( registry[ model.id ]) {
       registry[ model.id ] = model;
@@ -73,11 +74,11 @@ export default {
     if ( !model ) return;
     if ( this.updates[ model.id ])
       delete this.updates[ model.id ];
-    
-    const registry = this[ model.model_name + 's' ];
+
+    const registry = this[ model.modelName + 's' ];
     if ( !registry )
       return;
-    const idx = model.model_name + 'Ids';
+    const idx = model.modelName + 'Ids';
     const regIds = this[ idx ];
 
     const pos = regIds.indexOf( model.id );

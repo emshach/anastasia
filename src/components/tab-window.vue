@@ -62,7 +62,7 @@
 </template>
 
 <script lang="js">
-import TabItem from '@/components/TabItem'
+import TabItem from '@/components/tab-item'
 import state from '@/control-panel/state'
 
 export default {
@@ -92,7 +92,7 @@ export default {
       };
     },
     submitWindow() {
-      this.$emit( 'ctrl', { 
+      this.$emit( 'ctrl', {
         op: 'editWindow',
         windowId: this.window.id,
         updates: this.editing
@@ -115,7 +115,7 @@ export default {
   },
   computed: {
     tabState() {
-      let t = this.window.tabs;
+      const t = this.window.tabs;
       let last;
       let next;
       return this.window.tabs.map(( cr, i ) => {
@@ -195,23 +195,31 @@ export default {
     margin-top: 0;
     border-top: 0 none;
   }
-  &:hover, &.selected {
+  &.active:hover, &:hover, &.selected {
     > .header {
-      background: lightskyblue;
       border-top-left-radius: 4px;
       border-bottom-left-radius: 4px;
       margin-bottom: 2px;
+      background: lightskyblue;
       color: black;
       font-size: 120%;
       height: 3em;
+      a, a:visited, a:active, a:hover {
+        color: black;
+      }
       * {
         color: black;
       }
     }
   }
-  > .header:hover, > .header.editing, &.selected > .header {
+  &.active > .header:hover, > .header:hover, > .header.editing,
+  &.selected > .header {
+    color: black;
     background: lightskyblue;
     height: 8em;
+    a, a:visited, a:active, a:hover {
+      color: black;
+    }
     .ctrl-before {
       top: 0;
       height: 20px;

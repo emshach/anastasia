@@ -188,6 +188,9 @@ export default {
       return tab;
     });
   },
+  discard() {
+    this.state.flush();
+  },
   save( thing ) {
     const updates = this.state.flush();
     let data = null;
@@ -195,10 +198,11 @@ export default {
       data = thing.toJson();
       updates[ thing.id ] = data;
     }
+    console.log( 'writing:', updates );
     this.setData( updates );
     return data;
   },
-  saveAll( things ) {
+  saveAll( things = [] ) {
     // console.log( 'saving', things );
     const updates = this.state.flush();
     const data = {}
@@ -207,7 +211,6 @@ export default {
          updates[ thing.id ] =
          thing.toJson ? thing.toJson() : thing;
     }
-    console.log( 'writing:', updates );
     this.setData( updates );
     return data;
   },
@@ -233,6 +236,9 @@ export default {
       this.clearData([ prjId ]);
     }
   },
+  importProject( prj ) {
+    return new Project().load( prj, false, true );
+  },
   async addWindow( win ) {
     win = await Window.normalize( win );
     if ( win.windowId )
@@ -257,6 +263,9 @@ export default {
   },
   cleanupWindow( win ) {
     return !win.tabIds.length && this.removeWindow( win );
+  },
+  importWindow( win ) {
+    return new Window().load( win, false, true );
   },
   addTab( tab, win, pos ) {
     console.log( 'addTab', { tab, win, pos });
@@ -284,6 +293,13 @@ export default {
   autoRemoveTab( tab ) {
    return /^about:/.test( tab.url )
        || this.controlIds[ tab.windowId ] ? 'remove' : 'ask'
-  }
+  },
+  importTab( tab ) {
+    return new Tab().load( tab, false, true );
+  },
+  importNote( note ) {
+    // return new Note().load( note, false, true );
+    // TODO: this
+  },
   // TODO: more, user-customizable checks
 }

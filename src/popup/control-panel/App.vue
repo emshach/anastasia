@@ -5,7 +5,7 @@
 </template>
 
 <script>
-import TabProject from '@/components/TabProject'
+import TabProject from '@/components/tab-project'
 import state from '@/control-panel/state'
 
 export default {
@@ -49,6 +49,9 @@ export default {
     });
   },
   mounted() {},
+  beforeDestroy() {
+    this.port = null;
+  },
   methods: {
     async onLoad({ state }) {
       this.loading = false;
@@ -187,13 +190,12 @@ export default {
     selectPrev() {
       let focus = null;
       if ( state.focus ) {
-        let id = state.focus.id;
-        let parent = state.focus[ id.includes( 'tab' ) ? 'wid' : 'pid' ];
-        let set = parent[ id.includes( 'tab' ) ? 'tabIds' : 'windowIds' ];
+        const id = state.focus.id;
+        const parent = state.focus[ id.includes( 'tab' ) ? 'wid' : 'pid' ];
+        const set = parent[ id.includes( 'tab' ) ? 'tabIds' : 'windowIds' ];
         if ( parent ) {
-          let idx = set.indexOf( id );
+          const idx = set.indexOf( id );
           if ( idx ) {
-            
           } else {
           }
         }

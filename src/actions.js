@@ -3,17 +3,19 @@ import { controlPanel as cp } from '@/controllers'
 import { windowDiff } from '@/util'
 import { Window } from '@/models'
 
-export function updateWindow( storedWindow, uiWindow, diff ) {
+export function updateWindow( storedWindow, testWindow, diff, open ) {
   const w = storedWindow;
-  const ui = uiWindow;
-  if ( w.windowId !== ui.windowId ) {
-    w.windowId = ui.windowId;
+  const test = testWindow;
+  if ( test.windowId && w.windowId !== test.windowId ) {
+    w.windowId = test.windowId;
     // post({ op: 'SetWindowId', wid, windowId });
   }
-  delete w.closed;
-  store.openWindows[ w.windowId ] = w;
+  if ( open && !testWindow.closed ) {
+    delete w.closed;
+    store.openWindows[ w.windowId ] = w;
+  }
   diff.forEach( op => {
-    let tab, tid, _, after, insert;
+    let tab, tid, _, after, insert; // eslint-disable-line no-unused-vars
     switch ( op[0] ) {
     case 'attach':
       op[1].forEach(({ tid, tabId }) => {
@@ -49,10 +51,10 @@ export function updateWindow( storedWindow, uiWindow, diff ) {
       break;
     }
   });
-  if ( uiWindow.project )
-    uiWindow.project.removeWindow( uiWindow );
-  const wid = uiWindow.id;
-  store.state.remove( uiWindow );
+  if ( test.project )
+    test.project.removeWindow( test );
+  const wid = test.id;
+  store.state.remove( test );
   store.clearData([ wid ]);
 }
 
@@ -68,9 +70,9 @@ export async function addWindow( win ) {
   cp.send( 'AddWindow', { win, tabs, pos });
 }
 
-export async function loadFromUI( ws ) {
-  console.log( 'loadFromUI', ws );
-  const closeEnough = ( tabs, diffs ) => ( diffs < 5 && tabs / diffs > 2 );
+export async function syncWindows( ws, reopen ) {
+  console.log( 'syncWindows', ws );
+  const closeEnough = ( tabs, diffs ) => ( tabs / diffs > 3 );
   // get stored urls
   const storedWindows = store.state.windowIds
       .reduce(( lists, wid ) => {
@@ -79,6 +81,7 @@ export async function loadFromUI( ws ) {
             allUrls = '';
         w.tabIds.forEach( tid => {
           const t = store.state.tabs[ tid ];
+          if (!t) return;
           if ( !browser.closed )
             openUrls += `${ t.id }:::::${ t.url }\n`;
           allUrls += `${ t.id }:::::${ t.url }\n`;
@@ -99,10 +102,7 @@ export async function loadFromUI( ws ) {
         return lists;
       }, [ [], [] ])
       .flat();
-  const windows = ( await Promise.all(
-    ( ws || await browser.windows.getAll())
-       .map( Window.normalize )))
-        .filter( w => !store.controlIds[ w.windowId ]);
+  const windows = await ws;
   console.log({ windows });
   const remainKeys = {},
         unmatchedKeys = {},
@@ -112,13 +112,13 @@ export async function loadFromUI( ws ) {
       remainCount = 0,
       unmatchedCount = 0;
   let remaining = storedWindows;
-  let unmatched = windows.filter( uiWindow => {
+  let unmatched = windows.filter( testWindow => {
     let matched = false;
     remaining = remaining.filter( storedWindow => {
       if ( matched ) return true;
-      const diff = windowDiff( storedWindow, uiWindow );
+      const diff = windowDiff( storedWindow, testWindow );
       storedWindow = storedWindow.w;
-      const pair = { storedWindow, uiWindow };
+      const pair = { storedWindow, testWindow };
       const score = diff.length;
       if ( score === 1 ) {                 // then windows match exactly
         matched = true;
@@ -151,27 +151,27 @@ export async function loadFromUI( ws ) {
     if (!unmatchedCount || !remainCount )
       break;
     const options = pairs[ score ];
-    for ( const { pair:{ storedWindow, uiWindow }, diff } of options ) {
+    for ( const { pair:{ storedWindow, testWindow }, diff } of options ) {
       // console.log({ wid, windowId, remainKeys, unmatchedKeys });
       if ( !( storedWindow.id in remainKeys )
-           || !( uiWindow.id in unmatchedKeys ))
+           || !( testWindow.id in unmatchedKeys ))
         continue;
-      if ( closeEnough( uiWindow.tabIds.length, diff.length - 1 )) {
+      if ( closeEnough( testWindow.tabIds.length, diff.length - 1 )) {
         delete remainKeys[ storedWindow.id ];
-        delete unmatchedKeys[ uiWindow.id ];
+        delete unmatchedKeys[ testWindow.id ];
         --remainCount;
         --unmatchedCount;
-        nearMatches.push({ storedWindow, uiWindow, diff });
+        nearMatches.push({ storedWindow, testWindow, diff });
       }
     }
   }
   unmatched = unmatched.filter( x => unmatchedKeys[ x.id ]);
   remaining = remaining.filter( x => remainKeys[ x.wid ]);
   // console.log({ matches, nearMatches, unmatched, scores, pairs });
-  for ( const { pair: { storedWindow, uiWindow }, diff } of matches)
-    updateWindow( storedWindow, uiWindow, diff );
-  for ( const { storedWindow, uiWindow, diff } of nearMatches)
-    updateWindow( storedWindow, uiWindow, diff );
+  for ( const { pair: { storedWindow, testWindow }, diff } of matches)
+    updateWindow( storedWindow, testWindow, diff, reopen );
+  for ( const { storedWindow, testWindow, diff } of nearMatches)
+    updateWindow( storedWindow, testWindow, diff, reopen );
   unmatched.forEach( addWindow );
   if ( !ws ) {
     const updates = {};
@@ -184,8 +184,21 @@ export async function loadFromUI( ws ) {
     store.save();               // just in case
 }
 
+export async function loadFromUI( windows ) {
+  return syncWindows(
+    Promise.all(
+      ( windows || await browser.windows.getAll()).map( Window.normalize ))
+       .filter( w => !store.controlIds[ w.windowId ]), true );
+}
+
+export async function loadFromImport( windows, reopen ) {
+  return syncWindows( windows, reopen );
+}
+
 export default {
   updateWindow,
   addWindow,
+  syncWindows,
   loadFromUI,
+  loadFromImport,
 }

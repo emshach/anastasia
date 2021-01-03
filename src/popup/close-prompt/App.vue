@@ -15,7 +15,7 @@
 </template>
 
 <script>
-import TabItem from '@/components/TabItem'
+import TabItem from '@/components/tab-item'
 const tabs = [];
 window.closeTabs = tabs;
 export default {

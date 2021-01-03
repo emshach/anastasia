@@ -58,7 +58,7 @@ export async function onWindowFocused( winId ) {
     const prev = store.state.activeWindow;
     prev.focused = false;
     w.focused = true;
-    store.setData({[ prev.id ]: prev, [ w.id ]: w });
+    store.saveAll([ prev,  w ]);
   } else {
     const focused = {};
     Object.values( store.state.windows ).forEach( w => {
@@ -69,7 +69,7 @@ export async function onWindowFocused( winId ) {
     });
     focused[ w.id ] = w;
     w.focused = true;
-    store.saveAll(Object.values( focused ));
+    store.saveAll( Object.values( focused ));
   }
   store.state.activeWindow = w;
   store.state.controlActive = false;

@@ -1,5 +1,6 @@
 import debounce from 'debounce'
 import store from '@/data'
+import state from '@/state'
 
 const b = browser;
 const ports = {};
@@ -54,13 +55,14 @@ export class Controller {
   }
 
   send( op, msg ) {
+    console.log( 'sending', { op, msg });
     msg.op = op;
     if ( this.port && this.ready )
       this.port.postMessage( msg );
   }
 
   onMessage( msg ) {
-    console.log( 'panel => control', msg );
+    console.log( `${ this.name || 'panel' } => control`, msg );
     if ( this[ msg.op ])
       this[ msg.op ]( msg );
     else
@@ -446,6 +448,7 @@ export const controlPanel = new Controller({
     }
   }
 });
+
 export const closePrompt = new Controller({
   name: 'close-prompt',
   onReady() {
@@ -475,8 +478,154 @@ export const closePrompt = new Controller({
   }
 });
 
+export const optionsPage = new Controller({
+  name: 'options',
+  onReady() {
+    const tabs = store.recentlyClosed.splice(0);
+    // console.log( 'close-prompt tabs', tabs, store.recentlyClosed );
+    this.send( 'Load', { tabs });
+  },
+  window() {
+    return {
+      type: 'detached_panel',
+      url: 'options.html',
+      width: 800,
+      height: window.screen.height,
+      allowScriptsToClose: true,
+    }
+  },
+  handlers: {
+    importData({ projects, windows, tabs, notes, reopen, sync, orphaned }) {
+      console.log( 'importData', {
+        projects,
+        windows,
+        tabs,
+        notes,
+        reopen,
+        sync,
+        orphaned
+      });
+      const tx = {};
+      const rename = ( list ) => list
+            .map( id => tx[ id ] && tx[ id ].id )
+            .filter ( x => x ); // eslint-disable-line func-call-spacing
+      const openWindows = [];
+      const updates = [];
+      const tabNotes = {};
+
+      try {
+        for ( const p of projects ) {
+          tx[ p.id ] = store.importProject(p);
+        }
+        for ( const w of windows ) {
+          tx[ w.id ] = store.importWindow(w);
+        }
+        for ( const t of tabs ) {
+          if ( t.orphaned ) {
+            if ( !orphaned ) continue;
+            // TODO: tbd
+          } else {
+            tx[ t.id ] = store.importTab(t);
+          }
+        }
+        for ( const n of notes ) {
+          tx[ n.id ] = store.importNote(n);
+        }
+
+        const project0 = Object.values( state.projects )[0]
+        for ( const p of projects ) {
+          const prj = tx[ p.id ];
+          if ( !prj ) continue;
+          if ( p.projectIds ) {
+            prj.projectIds = rename( p.projectIds )
+          }
+          if ( p.windowIds ) {
+            prj.windowIds = rename( p.windowIds )
+          }
+          if ( p.pid && tx[ p.pid ]) {
+            prj.pid = tx[ p.pid ].id;
+          } else {
+            project0.addProject( prj )
+          }
+          updates.push( prj );
+          // FIXME: don't like that this process is half outside of import'
+        }
+        for ( const w of windows ) {
+          const win = tx[ w.id ];
+          if ( !win ) continue;
+          if ( w.tabIds ) {
+            win.tabIds = rename( w.tabIds )
+          }
+          if ( w.pid && tx[ w.pid ]) {
+            win.pid = tx[ w.pid ].id;
+          } else {
+            project0.addWindow( win )
+          }
+          w.windowId = null;
+          if ( !w.closed ) {
+            openWindows.push(w);
+          }
+          w.closed = true;
+          updates.push( win );
+        }
+        for ( const t of tabs ) {
+          const tab = tx[ t.id ];
+          if ( !tab ) continue;
+          if ( t.wid && tx[ t.wid ]) {
+            tab.wid = tx[ t.wid ].id;
+          } else {
+            tab.wid = null;
+          }
+          updates.push( tab );
+        }
+        for ( const n of notes ) {
+          const note = tx[ n.id ];
+          if ( !note ) continue;
+          updates.push( note );
+          // TODO: the rest of this
+        }
+        // TODO: rules
+
+        console.log( 'To be imported', {
+          tx,
+          projects: projects.map(({ id }) => tx[ id ]),
+          windows: windows.map(({ id }) => tx[ id ]),
+          tabs: tabs.map(({ id }) => tx[ id ]),
+          notes: notes.map(({ id }) => tx[ id ]),
+          reopen
+          // TODO: rules
+        });
+        // throw new Error( 'Escape hatch!' );
+        store.saveAll( updates );
+        controlPanel.load( store.toJson() );
+        if ( reopen ) {         // eslint-disable-line no-unreachable
+          for ( const { windowId } of openWindows ) {
+            controlPanel.resumeWindow({ windowId });
+          }
+        }
+        this.send( 'ImportSuccess', {} );
+      } catch ( error ) {
+        // store.discard();
+        console.trace();
+        console.log( error, error.stack );
+        this.send( 'ImportFailed', { error: '' + error });
+      }
+    },
+    removeTab( msg ) { controlPanel.removeTab( msg ) },
+    archiveTab( msg ) {},
+    moveTab( msg ) {},
+    add( tab ) {
+      this.send( 'Add', { tab });
+    },
+    done() {
+      this.close();
+    }
+  }
+});
+
 export default {
   Controller,
   controlPanel,
   closePrompt,
+  optionsPage,
 }

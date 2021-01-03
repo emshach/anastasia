@@ -28,23 +28,28 @@ export class AutoId {
 export const ProjectId = new AutoId( 'project' );
 export const WindowId = new AutoId( 'window' );
 export const TabId = new AutoId( 'tab' );
+export const NoteId = new AutoId( 'note' );
+export const RuleId = new AutoId( 'rule' );
+export const IconId = new AutoId( 'icon' );
 
 export class Model {
   constructor() {
-    Object.assign( this, {
-      model_name: null,
-      fields: [],
-      default: {},
-    });
+    const { modelName, fields, autoId: _autoId, defaults } = Model;
+    Object.assign( this, { modelName, fields, _autoId, defaults });
+    const c = Object.getPrototypeOf( this ).constructor;
+    if ( c !== Model ) {
+      const { modelName, fields, autoId: _autoId, defaults } = c;
+      Object.assign( this, { modelName, fields, _autoId, defaults });
+    }
   }
 
   init() {
-    this.model_registry = state[ this.model_name + 's' ];
+    this.model_registry = state[ this.modelName + 's' ];
   }
 
-  load( obj, init ) {
-    Object.assign( this, this.default, obj )
-    if ( !this.id ) {
+  load( obj, init, rename = false ) {
+    Object.assign( this, this.defaults, obj )
+    if ( !this.id || rename ) {
       this.id = this.autoId.next();
       while ( this.id in this.model_registry )
         this.id = this.autoId.next();
@@ -67,44 +72,41 @@ export class Model {
 
   get autoId() {
     if ( !this._autoId )
-      this._autoId = new AutoId( this.model_name  )
+      this._autoId = new AutoId( this.modelName  )
       return this._autoId;
+  }
+
+  toJson() {
+    const out = { id: this.id };
+    for ( const f of this.fields ) {
+      out[f] = this[f];
+    }
+    return out;
   }
 }
 Object.assign( Model, {
-  model_name: null,
+  modelName: null,
   fields: [],
-  default: {},
-  autoId: { next() { return null }}
+  autoId: { next() { return null }},
+  defaults: {},
 });
 
 export class Project extends Model {
   constructor() {
     super();
-    Object.assign( this, {
-      model_name: 'project',
-      fields: [ 'name', 'projectIds', 'windowIds' ],
-      default: {
-        name: 'misc',
-        pid: null,
-        projectIds: [],
-        windowIds: [],
-        // noteId: []
-      }
-    });
     this.init();
   }
 
   get projectList() {
-    return this.projectIds.map( p => state.projects[p] );
+    return this.projectIds.map( k => state.projects[k] );
   }
 
   get windowList() {
-    return this.windowIds.map( p => state.windows[p] );
+    return this.windowIds.map( k => state.windows[k] );
   }
 
   get children() {
-    return this.projectList.concat( this.windowList );
+    return this.projectList.concat( this.windows );
   }
 
   get project() {
@@ -187,25 +189,16 @@ export class Project extends Model {
     state.queueModel( this );
     state.queueModel( window );
   }
-
-  toJson() {
-    return {
-      id: this.id,
-      name: this.name,
-      projectIds: this.projectIds,
-      windowIds: this.windowIds,
-    }
-  }
 }
 Object.assign( Project, {
-  model_name: 'project',
+  modelName: 'project',
   fields: [ 'name', 'projectIds', 'windowIds' ],
   autoId: ProjectId,
   default: {
     name: 'misc',
     projectIds: [],
     windowIds: [],
-    // noteId: []
+    noteIds: [],
   },
   async normalize( prj ) {
     if ( prj instanceof Project )
@@ -217,22 +210,15 @@ Object.assign( Project, {
 export class Window extends Model {
   constructor() {
     super();
-    Object.assign( this, {
-      model_name: 'window',
-      window_type: 'normal',
-      default: {
-        windowId: null,
-        pid: 'project-0',
-        collapsed: true,
-        title: 'Window',
-        focused: false,
-      },
-    });
     this.init();
   }
 
+  get tabsMatch() {
+    return urlsToRegexp( this.tabList.map( tab => tab.url ));
+  }
+
   get tabList() {
-    return this.tabIds.map( t => state.tabs[t] );
+    return this.tabIds.map( k => state.tabs[k] );
   }
 
   get children() { return this.tabList; }
@@ -284,26 +270,14 @@ export class Window extends Model {
     this.windowId = null;
     state.queueModel( this );
   }
-
-  toJson() {
-    return {
-      id: this.id,
-      pid: this.pid,
-      title: this.title,
-      windowId: this.windowId,
-      collapsed: this.collapsed,
-      focused: this.focused,
-      state: this.state,
-      type: this.type,
-      tabIds: this.tabIds
-    }
-  }
 }
 Object.assign( Window, {
-  model_name: 'window',
+  modelName: 'window',
   autoId: WindowId,
-  window_type: 'normal',
-  default: {
+  fields: [ 'pid', 'title', 'windowId', 'collapsed', 'focused', 'state', 'type',
+            'closed', 'tabIds' ],
+  defaults: {
+    window_type: 'normal',
     windowId: null,
     pid: 'project-0',
     collapsed: true,
@@ -341,7 +315,6 @@ Object.assign( Window, {
       return tab.id;
     });
     out.tabIds = tabIds;
-    out.tabsMatch = urlsToRegexp( urls );
 
     win = new Window().load( out );
     for ( const t of win.tabList )
@@ -357,37 +330,14 @@ Object.assign( Window, {
 
 export class ExtensionWindow extends Window {}
 Object.assign( ExtensionWindow, {
-  window_type: 'extension',
+  defaults: Object.assign( {}, Window.defaults, {
+    window_type: 'extension',
+  })
 });
 
 export class Tab extends Model {
   constructor() {
     super();
-    Object.assign( this, {
-      model_name: 'tab',
-      default: {
-        tabId: null,
-        windowId: null,
-        wid: null,
-        active: false,
-        closed: false,
-        url: 'about:home',
-        icon: '/icons/48.png',
-        title: 'Tab',
-        discarded: true,
-        detached: false,
-        hidden: false,
-        highlighted: false,
-        openerTabId: null,
-        successorId: null,
-        mute: {
-          muted: false,
-          reason: null,
-          extension: null,
-        },
-        status: null
-      },
-    });
     this.init();
   }
 
@@ -406,37 +356,34 @@ export class Tab extends Model {
     this.windowId = null;
     state.queueModel( this );
   }
-
-  toJson() {
-    return {
-      id: this.id,
-      wid: this.wid,
-      active: this.active,
-      url: this.url,
-      icon: this.icon,
-      title: this.title,
-      attention: this.attention,
-      audible: this.audible,
-      discarded: this.discarded,
-      detached : this.detached,
-      closed: this.closed,
-      hidden: this.hidden,
-      highlighted: this.highlighted,
-      incognito: this.incognito,
-      index: this.index,
-      isArticle: this.isArticle,
-      isInReaderMode: this.isInReaderMode,
-      lastAccessed: this.lastAccessed,
-      mute: this.mute,
-      pinned: this.pinned,
-      status: this.status,
-    }
-  }
 }
 Object.assign( Tab, {
-  model_name: 'tab',
+  modelName: 'tab',
+  fields: [
+    'id',
+    'wid',
+    'active',
+    'url',
+    'icon',
+    'title',
+    'attention',
+    'audible',
+    'discarded',
+    'detached',
+    'closed',
+    'hidden',
+    'highlighted',
+    'incognito',
+    'index',
+    'isArticle',
+    'isInReaderMode',
+    'lastAccessed',
+    'mute',
+    'pinned',
+    'status',
+  ],
   autoId: TabId,
-  default: {
+  defaults: {
     tabId: null,
     windowId: null,
     wid: null,
@@ -496,6 +443,86 @@ Object.assign( Tab, {
   }
 });
 
+export class Note extends Model {
+  constructor() {
+    super();
+    this.init();
+  }
+
+  get projectList() {
+    return this.projectIds.map( k => state.projects[k] );
+  }
+
+  get windowList() {
+    return this.windowIds.map( k => state.windows[k] );
+  }
+
+  get tabList() {
+    return this.tabIds.map( k => state.tabs[k] );
+  }
+
+  get ruleList() {
+    return this.ruleIds.map( k => state.rules[k] );
+  }
+
+  get noteList() {
+    return this.noteIds.map( k => state.notes[k] );
+  }
+
+  get parentList() {
+    return this.parentIds.map( k => state.notes[k] );
+  }
+
+  get children() {
+    return this.noteList
+  }
+}
+Object.assign( Note, {
+  modelName: 'note',
+  fields: [ 'name', 'summary', 'details',
+            'projectIds', 'windowIds', 'tabIds', 'ruleIds', 'noteIds', 'parentIds' ],
+  autoId: NoteId,
+  default: {
+    name: 'note',
+    summary: '',
+    details: '',
+    projectIds: [],
+    windowIds: [],
+    tabIds: [],
+    ruleIds: [],
+    noteIds: [],
+    parentIds: [],
+  },
+  async normalize( note ) {
+    if ( note instanceof Note )
+      return note;
+    return new Note().load( note )
+  }
+});
+
+export class Rule extends Model {
+  constructor() {
+    super();
+    this.init();
+  }
+}
+Object.assign( Rule, {
+  modelName: 'note',
+  fields: [ 'match', 'time', 'onlytab', 'action' ],
+  autoId: RuleId,
+  default: {
+    match: '',
+    time: 0,
+    onlytab: false,
+    action: 'forget',
+  },
+  async normalize( rule ) {
+    if ( rule instanceof Rule )
+      return rule;
+    return new Rule().load( rule )
+  }
+});
+
 export default {
   cache,
   Model,
@@ -503,8 +530,13 @@ export default {
   ExtensionWindow,
   Window,
   Tab,
+  Rule,
+  Note,
   AutoId,
   ProjectId,
   WindowId,
   TabId,
+  NoteId,
+  RuleId,
+  IconId,
 }

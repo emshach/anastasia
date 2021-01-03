@@ -6,7 +6,8 @@
       <div class="ctrl-after"><slot name="ctrl-after" /></div>
     </div>
     <div class="body">
-      <tab-window v-for="w in project.windows" :window=w :key=w.id 
+      <tab-window v-for="w in project.windows" :key=w.id 
+                  :window=w
                   @ctrl=pass />
     </div>
     <div class="footer">
@@ -15,7 +16,7 @@
 </template>
 
 <script lang="js">
-import TabWindow from '@/components/TabWindow'
+import TabWindow from '@/components/tab-window'
 export default {
   name: 'TabProject',
   mixins: [],
