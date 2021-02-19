@@ -1,21 +1,24 @@
 import store from '@/data'
 import { controlPanel as cp } from '@/controllers'
 import { windowDiff } from '@/util'
-import { Window } from '@/models'
+import { Window, Tab } from '@/models'
 
 export function updateWindow( storedWindow, testWindow, diff, open ) {
-  const w = storedWindow;
+  const win = storedWindow;
   const test = testWindow;
-  if ( test.windowId && w.windowId !== test.windowId ) {
-    w.windowId = test.windowId;
+  let resume = false;
+  if ( test.windowId && win.windowId !== test.windowId ) {
+    win.windowId = test.windowId;
     // post({ op: 'SetWindowId', wid, windowId });
   }
   if ( open && !testWindow.closed ) {
-    delete w.closed;
-    store.openWindows[ w.windowId ] = w;
+    if ( testWindow.windowId ) {
+      store.openWindows[ win.windowId ] = win;
+    }
+    resume = true;
   }
   diff.forEach( op => {
-    let tab, tid, _, after, insert; // eslint-disable-line no-unused-vars
+    let tab, tabId, after, insert, pos;
     switch ( op[0] ) {
     case 'attach':
       op[1].forEach(({ tid, tabId }) => {
@@ -23,31 +26,39 @@ export function updateWindow( storedWindow, testWindow, diff, open ) {
           console.warn( `tab "${tid}" does not exist!` );
           return;
         }
-        store.state.tabs[ tid ].tabId = tabId;
-        if ( store.openTabs[ tabId ])
-          store.removeTab( store.openTabs[ tabId ] );
-        store.openTabs[ tabId ] = store.state.tabs[ tid ];
-        cp.send( 'AttachTab', { tid, tabId });
+        if ( tabId ) {
+          store.state.tabs[ tid ].tabId = tabId;
+          if ( store.openTabs[ tabId ])
+            store.removeTab( store.openTabs[ tabId ] );
+          store.openTabs[ tabId ] = store.state.tabs[ tid ];
+          // cp.send( 'AttachTab', { tid, tabId });
+        }
       })
       break;
     case 'reopen':
-      op[1].forEach( tid => {
-        tab = store.state.tabs[ tid ];
+      op[1].forEach( tabId => {
+        tab = store.state.tabs[ tabId ];
         tab.closed = false;
-        cp.send( 'ResumeTab', { tid });
+        cp.send( 'ResumeTab', { tabId });
       })
       break;
     case 'close':
-      tid = op[1];
-      tab = store.state.tabs[ tid ];
+      tabId = op[1];
+      tab = store.state.tabs[ tabId ];
       tab.closed = true;
-      cp.send( 'SuspendTab', { tid });
+      cp.send( 'SuspendTab', { tabId });
       break;
     case 'new':
-      [ _, after, insert ] = op;
-      tab = store.addTab( insert );
-      after = store.openTabs[ after ].toJson();
-      cp.send( 'AddTab', { tab, after });
+      [ after, insert ] = op.slice(1);
+      pos = win.tabIds.indexOf( after );
+      pos = pos > -1 ? pos + 1 : -1;
+      insert.wid = null;
+      tab = Tab.normalize( insert )
+      win.addTab( tab, pos );
+      cp.send( 'AddTab', { tab: tab.toJson(), win, pos });
+      if ( !tab.closed  && !tab.tabId ) {
+        cp.resumeTab({ tabId: tab.id })
+      }
       break;
     }
   });
@@ -56,6 +67,8 @@ export function updateWindow( storedWindow, testWindow, diff, open ) {
   const wid = test.id;
   store.state.remove( test );
   store.clearData([ wid ]);
+  if ( resume && win.closed )
+    cp.resumeWindow({ windowId: win.id });
 }
 
 export async function addWindow( win ) {
@@ -68,49 +81,48 @@ export async function addWindow( win ) {
     p.windowIds.push( win.id );
   }
   cp.send( 'AddWindow', { win, tabs, pos });
+  return win;
 }
 
 export async function syncWindows( ws, reopen ) {
   console.log( 'syncWindows', ws );
   const closeEnough = ( tabs, diffs ) => ( tabs / diffs > 3 );
   // get stored urls
-  const storedWindows = store.state.windowIds
-      .reduce(( lists, wid ) => {
-        const w = store.state.windows[ wid ];
-        let openUrls = '',
-            allUrls = '';
-        w.tabIds.forEach( tid => {
-          const t = store.state.tabs[ tid ];
-          if (!t) return;
-          if ( !browser.closed )
-            openUrls += `${ t.id }:::::${ t.url }\n`;
-          allUrls += `${ t.id }:::::${ t.url }\n`;
-        });
-        const open = !w.closed;
-        lists[ open ? 1 : 0 ].push({
-          open,
-          wid,
-          w,
-          tabs: w.tabIds.map( tid => ({
-            tid,
-            url: ( store.state.tabs[ tid ]
-                   && store.state.tabs[ tid ].url )
-          })),
-          openUrls,
-          allUrls,
-        });
-        return lists;
-      }, [ [], [] ])
-      .flat();
-  const windows = await ws;
+  const storedWindows = store.state.windowIds.reduce(( lists, wid ) => {
+    const w = store.state.windows[ wid ];
+    let openUrls = '';
+    let allUrls = '';
+    w.tabIds.forEach( tid => {
+      const t = store.state.tabs[ tid ];
+      if (!t) return;
+      if ( !t.closed )
+        openUrls += `${ t.id }:::::${ t.url }\n`;
+      allUrls += `${ t.id }:::::${ t.url }\n`;
+    });
+    lists[ w.closed ? 0 : 1 ].push({
+      open,
+      wid,
+      w,
+      tabs: w.tabIds.map( tid => ({
+        tid,
+        url: ( store.state.tabs[ tid ]
+               && store.state.tabs[ tid ].url )
+      })),
+      openUrls,
+      allUrls,
+    });
+    return lists;
+  }, [ [], [] ]).flat();
+
+  const windows = await ws();
   console.log({ windows });
-  const remainKeys = {},
-        unmatchedKeys = {},
-        matches = [],
-        pairs = {};
-  let scores = [],
-      remainCount = 0,
-      unmatchedCount = 0;
+  const remainKeys = {};
+  const unmatchedKeys = {};
+  const matches = [];
+  const pairs = {};
+  let scores = [];
+  let remainCount = 0;
+  let unmatchedCount = 0;
   let remaining = storedWindows;
   let unmatched = windows.filter( testWindow => {
     let matched = false;
@@ -167,17 +179,26 @@ export async function syncWindows( ws, reopen ) {
   }
   unmatched = unmatched.filter( x => unmatchedKeys[ x.id ]);
   remaining = remaining.filter( x => remainKeys[ x.wid ]);
-  // console.log({ matches, nearMatches, unmatched, scores, pairs });
+  console.log({ matches, nearMatches, unmatched, scores, pairs });
   for ( const { pair: { storedWindow, testWindow }, diff } of matches)
     updateWindow( storedWindow, testWindow, diff, reopen );
   for ( const { storedWindow, testWindow, diff } of nearMatches)
     updateWindow( storedWindow, testWindow, diff, reopen );
-  unmatched.forEach( addWindow );
+  unmatched.forEach( reopen ? w => {
+    if ( w.closed ) {
+      addWindow(w);
+      w.close();
+    } else {
+      addWindow(w).then(({ id }) => {
+        cp.resumeWindow({ windowId: id });
+      });
+    }
+  } : addWindow );
   if ( !ws ) {
     const updates = {};
     remaining.forEach( win => {
       win.w.close();
-      updates[ win.id ] = win;
+      updates[ win.id ] = win.w;
     });
     store.saveAll( Object.values( updates ));
   } else
@@ -185,10 +206,10 @@ export async function syncWindows( ws, reopen ) {
 }
 
 export async function loadFromUI( windows ) {
-  return syncWindows(
-    Promise.all(
-      ( windows || await browser.windows.getAll()).map( Window.normalize ))
-       .filter( w => !store.controlIds[ w.windowId ]), true );
+  return syncWindows( async () => (
+    await Promise.all(
+      ( windows || await browser.windows.getAll()).map( Window.normalize )))
+                     .filter( w => !store.controlIds[ w.windowId ]));
 }
 
 export async function loadFromImport( windows, reopen ) {

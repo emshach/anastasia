@@ -1,55 +1,40 @@
-<template lang="html">
-  <div :class=classes @click=selectTab >
-    <div v-if="editing" class="inner">
-      <input v-model=editing.title />
-      <div class="space" />
-      <div class="ctrl-after">
-        <a href="#" class="btn edit-btn" @click.stop.prevent=resetTab
-           title="submit">
-          <img src="icons/check.svg" />
-        </a>
-        <a href="#" class="btn edit-btn" @click.stop.prevent=submitTab
-           title="reset">
-          <img src="icons/ff-close.svg" />
-        </a>
-      </div>
-    </div>
-    <div v-else class="inner">
-      <slot name="ctrl-before">
-        <div class="ctrl-before">
-          <slot name="ctrl-before-prepend" />
-          <a href="#" class="btn close-btn" @click.stop.prevent=closeTab >
-            <img src="icons/ff-close.svg" />
-          </a>
-          <slot name="ctrl-before-append" />
-        </div>
-      </slot>
-      <a href="#" @click.stop.prevent=focusTab >
-        <img id="favicon" class="favicon" :src=tab.icon />
-        <span>{{ tab.title || tab.url }}</span>
-      </a>
-      <div class="space" />
-      <slot name="ctrl-after">
-        <div class="ctrl-after">
-          <slot name="ctrl-after-prepend" />
-          <a href="#" class="btn edit-btn" title="add note"
-             @click.stop.prevent=editTab >
-            <img src="icons/edit.svg" />
-          </a>
-          <slot name="ctrl-after-append" />
-        </div>
-      </slot>          
-    </div>
-  </div>
+<template lang="pug">
+.tab-item( :class=classes @click=selectTab )
+  .inner( v-if='editing' )
+    input( v-model='editing.title' )
+    .space
+    .ctrl-after
+      a.btn.edit-btn( href='#' title='submit' @click.stop.prevent='resetTab' )
+        img( src='icons/check.svg' )
+      a.btn.edit-btn( href='#' title='reset' @click.stop.prevent='submitTab' )
+        img( src='icons/ff-close.svg' )
+  .inner( v-else )
+    slot( name='ctrl-before' )
+      .ctrl-before
+        slot( name='ctrl-before-prepend' )
+        a.btn.close-btn( href='#' @click.stop.prevent='closeTab' )
+          img( src='icons/ff-close.svg' )
+        slot( name='ctrl-before-append' )
+    a( href='#' @click.stop.prevent='focusTab' )
+      tab-icon( :icon='tab.icon' )
+      span {{ tab.title || tab.url }}
+    .space
+    slot( name='ctrl-after' )
+      .ctrl-after
+        slot( name='ctrl-after-prepend' )
+        a.btn.edit-btn( href='#' title='add note' @click.stop.prevent='editTab' )
+          img( src='icons/edit.svg' )
+        slot( name='ctrl-after-append' )
 </template>
 
 <script lang="js">
 import state from '@/control-panel/state'
+import TabIcon from './tab-icon'
 
 export default {
   name: 'TabItem',
   mixins: [],
-  components: {},
+  components: { TabIcon },
   props: {
     tab: {
       type: Object,
@@ -89,7 +74,7 @@ export default {
       };
     },
     submitTab() {
-      this.$emit( 'ctrl', { 
+      this.$emit( 'ctrl', {
         op: 'editTab',
         tabId: this.tab.id,
         updates: this.editing
@@ -107,7 +92,6 @@ export default {
   computed: {
     classes() {
       return {
-        'tab-item': true,
         focus: this.focus,
         selected: this.tab.selected,
         opening: this.opening,

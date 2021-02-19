@@ -1,6 +1,8 @@
 import debounce from 'debounce'
 import store from '@/data'
 import state from '@/state'
+import { loadFromImport } from '@/actions'
+import { Project } from '@/models'
 
 const b = browser;
 const ports = {};
@@ -176,7 +178,7 @@ export const controlPanel = new Controller({
       if ( tab.closed ) {
         this.removeTab({ tabId });
       } else {
-        Object.assign( tab, {
+        tab.update( tab, {
           closed: true,
           active: false,
           tabId: null,
@@ -289,12 +291,18 @@ export const controlPanel = new Controller({
       delete tab.closed;
       store.save( tab );
     },
-    closeWindow({ windowId }) {
+    async closeWindow({ windowId }) {
       const w = store.state.windows[ windowId ];
       if ( w.closed ) {
         this.removeWindow({ windowId }); // TODO: ask for confirmation if many tabs
       } else {
-        b.windows.remove( w.windowId );
+          w.closed = true;
+          store.save(w);
+        try {
+          await b.windows.remove( w.windowId );
+        } catch ( error ) {
+          console.error( `couldn't close window: ${error}` );
+        }
         this.send( 'SuspendWindow', { windowId });
       }
     },
@@ -313,10 +321,10 @@ export const controlPanel = new Controller({
       });
       if ( !w.closed )
         b.windows.remove( w.windowId );
-      const wix = store.windowIds.indexOf( w.id );
+      const wix = store.state.windowIds.indexOf( w.id );
       if ( wix > -1 ) {
-        store.windowIds.splice( wix, 1 );
-        store.setData({ windowIds: store.windowIds });
+        store.state.windowIds.splice( wix, 1 );
+        store.setData({ windowIds: store.state.windowIds });
         store.clearData( w.id );
       }
       this.send( 'RemoveWindow', { windowId: w.id });
@@ -374,7 +382,7 @@ export const controlPanel = new Controller({
           store.save(w);
         });
       } else {
-        const openTabs = w.tabIds.map( t => store.tabs[t] )
+        const openTabs = w.tabIds.map( t => store.state.tabs[t] )
               .filter( t => !t.closed );
         win.url = openTabs.map( t => t.url );
         b.windows.create( win ).then( win => {
@@ -435,16 +443,16 @@ export const controlPanel = new Controller({
     editWindow({ windowId, updates }) {
       const w = store.state.windows[ windowId ];
       if (!w) return;
-      Object.assign( updates );  // for now
+      w.update( updates );  // for now
       store.save(w);
       this.send( 'UpdateWindow', { windowId: w.id, changes: updates });
     },
     editTab({ tabId, updates }) {
       const t = store.state.tabs[ tabId ];
       if (!t) return;
-      Object.assign( updates );  // for now
+      t.update( updates );
       store.save(t);
-      this.send( 'UpdateTab', { tabId: t.id, changes: updates });
+      this.send( 'UpdateTab', { tabId: t.id, tab:t.toJson(), changes: updates });
     }
   }
 });
@@ -481,9 +489,9 @@ export const closePrompt = new Controller({
 export const optionsPage = new Controller({
   name: 'options',
   onReady() {
-    const tabs = store.recentlyClosed.splice(0);
-    // console.log( 'close-prompt tabs', tabs, store.recentlyClosed );
-    this.send( 'Load', { tabs });
+    // const tabs = store.recentlyClosed.splice(0);
+    // // console.log( 'close-prompt tabs', tabs, store.recentlyClosed );
+    // this.send( 'Load', { tabs });
   },
   window() {
     return {
@@ -495,10 +503,20 @@ export const optionsPage = new Controller({
     }
   },
   handlers: {
-    importData({ projects, windows, tabs, notes, reopen, sync, orphaned }) {
+    async importData({
+      projects,
+      windows,
+      icons,
+      tabs,
+      notes,
+      reopen,
+      sync,
+      orphaned
+    }) {
       console.log( 'importData', {
         projects,
         windows,
+        icons,
         tabs,
         notes,
         reopen,
@@ -511,20 +529,31 @@ export const optionsPage = new Controller({
             .filter ( x => x ); // eslint-disable-line func-call-spacing
       const openWindows = [];
       const updates = [];
-      const tabNotes = {};
+      // const tabNotes = {};
 
       try {
         for ( const p of projects ) {
-          tx[ p.id ] = store.importProject(p);
+          const prj = Project.find( fp => fp.name === p.name );
+          if ( prj ) {
+            tx[ p.id ] = prj
+          } else {
+            tx[ p.id ] = store.importProject(p);
+          }
         }
         for ( const w of windows ) {
           tx[ w.id ] = store.importWindow(w);
         }
+        // for ( const i of icons ) {
+        //   tx[ i.id ] = store.import(i);
+        // }
         for ( const t of tabs ) {
           if ( t.orphaned ) {
             if ( !orphaned ) continue;
             // TODO: tbd
           } else {
+            if ( t.iconid && icons[ t.iconid ]) {
+              t.icon = icons[ t.iconid ].url || icons[ t.iconid ].data;
+            }
             tx[ t.id ] = store.importTab(t);
           }
         }
@@ -532,94 +561,127 @@ export const optionsPage = new Controller({
           tx[ n.id ] = store.importNote(n);
         }
 
-        const project0 = Object.values( state.projects )[0]
-        for ( const p of projects ) {
-          const prj = tx[ p.id ];
-          if ( !prj ) continue;
-          if ( p.projectIds ) {
-            prj.projectIds = rename( p.projectIds )
+        const importData = () => {
+          const project0 = Object.values( state.projects )[0]
+          for ( const p of projects ) {
+            const prj = tx[ p.id ];
+            if ( !prj ) continue;
+            if ( prj === p ) {
+              if ( p.projectIds ) {
+                prj.projectIds = rename( p.projectIds )
+              }
+              if ( p.windowIds ) {
+                prj.windowIds = rename( p.windowIds )
+              }
+            } else {
+              if ( p.projectIds ) {
+                prj.projectIds =
+                   ( prj.projectIds || [] ).concat( rename( p.projectIds ))
+              }
+              if ( p.windowIds ) {
+                prj.windowIds =
+                   ( prj.windowIds || [] ).concat( rename( p.windowIds ))
+              }
+              p.projectIds = []
+              p.windowIds = []
+            }
+            if ( p.pid && tx[ p.pid ]) {
+              prj.pid = tx[ p.pid ].id;
+            } else {
+              project0.addProject( prj )
+            }
+            updates.push( prj );
+            // FIXME: don't like that this process is half outside of import'
           }
-          if ( p.windowIds ) {
-            prj.windowIds = rename( p.windowIds )
+          for ( const w of windows ) {
+            const win = tx[ w.id ];
+            if ( !win ) continue;
+            if ( w.tabIds ) {
+              win.tabIds = rename( w.tabIds )
+            }
+            win.windowId = null;
+            if ( w.pid && tx[ w.pid ]) {
+              win.pid = tx[ w.pid ].id;
+            } else {
+              project0.addWindow( win )
+            }
+            w.windowId = null;
+            // if ( !w.closed ) {
+            //   openWindows.push(w);
+            // }
+            // w.closed = true;
+            updates.push( win );
           }
-          if ( p.pid && tx[ p.pid ]) {
-            prj.pid = tx[ p.pid ].id;
-          } else {
-            project0.addProject( prj )
+          for ( const t of tabs ) {
+            const tab = tx[ t.id ];
+            if ( !tab ) continue;
+            if ( t.wid && tx[ t.wid ]) {
+              tab.wid = tx[ t.wid ].id;
+            } else {
+              tab.wid = null;
+            }
+            tab.iconid = null;
+            tab.tabId = null;
+            updates.push( tab );
           }
-          updates.push( prj );
-          // FIXME: don't like that this process is half outside of import'
-        }
-        for ( const w of windows ) {
-          const win = tx[ w.id ];
-          if ( !win ) continue;
-          if ( w.tabIds ) {
-            win.tabIds = rename( w.tabIds )
+          for ( const n of notes ) {
+            const note = tx[ n.id ];
+            if ( !note ) continue;
+            updates.push( note );
+            // TODO: the rest of this
           }
-          if ( w.pid && tx[ w.pid ]) {
-            win.pid = tx[ w.pid ].id;
-          } else {
-            project0.addWindow( win )
-          }
-          w.windowId = null;
-          if ( !w.closed ) {
-            openWindows.push(w);
-          }
-          w.closed = true;
-          updates.push( win );
-        }
-        for ( const t of tabs ) {
-          const tab = tx[ t.id ];
-          if ( !tab ) continue;
-          if ( t.wid && tx[ t.wid ]) {
-            tab.wid = tx[ t.wid ].id;
-          } else {
-            tab.wid = null;
-          }
-          updates.push( tab );
-        }
-        for ( const n of notes ) {
-          const note = tx[ n.id ];
-          if ( !note ) continue;
-          updates.push( note );
-          // TODO: the rest of this
-        }
-        // TODO: rules
-
-        console.log( 'To be imported', {
-          tx,
-          projects: projects.map(({ id }) => tx[ id ]),
-          windows: windows.map(({ id }) => tx[ id ]),
-          tabs: tabs.map(({ id }) => tx[ id ]),
-          notes: notes.map(({ id }) => tx[ id ]),
-          reopen
           // TODO: rules
-        });
+
+          console.log( 'To be imported', {
+            tx,
+            projects: projects.map(({ id }) => tx[ id ]),
+            windows: windows.map(({ id }) => tx[ id ]),
+            tabs: tabs.map(({ id }) => tx[ id ]),
+            notes: notes.map(({ id }) => tx[ id ]),
+            reopen
+            // TODO: rules
+          });
+          store.saveAll( updates );
+        }
         // throw new Error( 'Escape hatch!' );
-        store.saveAll( updates );
-        controlPanel.load( store.toJson() );
-        if ( reopen ) {         // eslint-disable-line no-unreachable
-          for ( const { windowId } of openWindows ) {
-            controlPanel.resumeWindow({ windowId });
+        if ( sync ) {
+          await loadFromImport(() => {
+            importData();
+            return windows.map(({ id }) => tx[ id ]);
+          }, reopen );
+          for ( const p of projects ) {
+            const project = tx[ p.id ];
+            if ( !project.windowIds.length )
+              store.removeProject( project.id );
+          }
+          // controlPanel.load( store.toJson() );
+          // ^^^ not necessary, methinks
+        } else {
+          importData();
+          controlPanel.load( store.toJson() );
+          if ( reopen ) {         // eslint-disable-line no-unreachable
+            for ( const { windowId } of openWindows ) {
+              controlPanel.resumeWindow({ windowId });
+            }
           }
         }
         this.send( 'ImportSuccess', {} );
       } catch ( error ) {
-        // store.discard();
+        store.discard();
         console.trace();
         console.log( error, error.stack );
         this.send( 'ImportFailed', { error: '' + error });
       }
     },
-    removeTab( msg ) { controlPanel.removeTab( msg ) },
-    archiveTab( msg ) {},
-    moveTab( msg ) {},
-    add( tab ) {
-      this.send( 'Add', { tab });
-    },
-    done() {
-      this.close();
-    }
+    // removeTab( msg ) { controlPanel.removeTab( msg ) },
+    // archiveTab( msg ) {},
+    // moveTab( msg ) {},
+    // add( tab ) {
+    //   this.send( 'Add', { tab });
+    // },
+    // done() {
+    //   this.close();
+    // }
   }
 });
 

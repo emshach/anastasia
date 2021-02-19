@@ -1,18 +1,20 @@
-<template lang="html">
-  <div class="tab-project">
-    <div class="header">
-      <div class="ctrl-before"><slot name="ctrl-before" /></div>
-      <div class="title"><slot name="title">{{ project.name }}</slot></div>
-      <div class="ctrl-after"><slot name="ctrl-after" /></div>
-    </div>
-    <div class="body">
-      <tab-window v-for="w in project.windows" :key=w.id 
-                  :window=w
-                  @ctrl=pass />
-    </div>
-    <div class="footer">
-    </div>
-  </div>
+<template lang="pug">
+.tab-project
+  .header
+    .ctrl-before
+       slot( name='ctrl-before' )
+    .title
+       slot( name='title' )
+         | {{ project.name }}
+    .ctrl-after( slot name='ctrl-after' )
+  .body
+    tab-window(
+      v-for='w in project.windows'
+      :key='w.id'
+      :window='w'
+      @ctrl='pass'
+    )
+  .footer
 </template>
 
 <script lang="js">

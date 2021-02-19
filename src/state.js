@@ -7,13 +7,17 @@ export default {
   projectIds: [],
   windowIds: [],
   tabIds: [],
-  // tagIds: [],
-  // noteIds: [],
+  iconIds: [],
+  tagIds: [],
+  noteIds: [],
+  ruleIds: [],
   activeWindow: null,
   windows: {},
+  icons: {},
   tabs: {},
   tags: {},
   notes: {},
+  rules: {},
   toJson() {
     const out = {
       controlActive: this.controlActive,
@@ -21,20 +25,26 @@ export default {
       projectIds: this.projectIds,
       activeWindow: this.activeWindow,
       windows: {},
+      icons: {},
       tabs: {},
       tags: {},
-      notes: {}
+      notes: {},
+      rules: {},
     }
     for ( const k of this.projectIds )
       out.projects[k] = this.projects[k].toJson();
     for ( const k of this.windowIds )
       out.windows[k] = this.windows[k].toJson();
+    for ( const k of this.iconIds )
+      out.icons[k] = this.icons[k].toJson();
     for ( const k of this.tabIds )
-      out.tabs[ k ] = this.tabs[k].toJson();
-    // for ( const k of this.tagIds )
-    //   out.tags[ k ] = this.tags[k].toJson();
-    // for ( const k of this.noteIds )
-    //   out.notes[ k ] = this.notes[k].toJson();
+      out.tabs[k] = this.tabs[k].toJson();
+    for ( const k of this.tagIds )
+      out.tags[k] = this.tags[k].toJson();
+    for ( const k of this.noteIds )
+      out.notes[k] = this.notes[k].toJson();
+    for ( const k of this.ruleIds )
+      out.rules[k] = this.rules[k].toJson();
     return out;
   },
   queue( obj ) {

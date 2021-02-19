@@ -13,28 +13,28 @@
 
   template( v-else )
     .form-element( v-if='importObjects' )
-      button( value='import', @click='submit' ) Import
+      button( value='import' @click='submit' ) Import
       label
-        input( type='checkbox', v-model='importData.reopen' )
+        input( type='checkbox' v-model='importObjects.reopen' )
         | Reopen imported open windows
       label
-        input( type='checkbox', v-model='importData.sync' )
-        | Sync import data with current broser state
+        input( type='checkbox' v-model='importObjects.sync' )
+        | Sync import data with current browser state
       label
-        input( type='checkbox', v-model='importData.orphaned' )
+        input( type='checkbox' v-model='importObjects.orphaned' )
         | Import orphaned tabs as notes
       object-manager( :value='importObjects', @input='updateObjects' )
-      button( value='import', @click='submit' ) Import
+      button( value='import' @click='submit' ) Import
 
     .form-element( v-else-if='importData')
       label You can edit the data below before importing
-      button( value='import', @click='process' ) Process Data
+      button( value='import' @click='process' ) Process Data
       v-json-editor( v-model='importData' )
-      button( value='import', @click='process' ) Process Data
+      button( value='import' @click='process' ) Process Data
 
     .form-element
       label Paste json data below or upload file
-      input( type='file', :key='uploadTry', @change='updateFile' )
+      input( type='file' :key='uploadTry' @change='updateFile' )
       textarea( @input='updateData' )
 
 </template>
@@ -54,9 +54,6 @@ export default {
   data() {
     return {
       type: 'text',
-      reopen: false,
-      sync: false,
-      orphaned: false,
       importData: '',
       importObjects: null,
       importFile: null,
@@ -198,14 +195,15 @@ export default {
       const out = {
         projects: [],
         windows: [],
+        icons: {},
         tabs: [],
         notes: [],
         urlTabs: {},
-        reopen: false,
-        sync: false,
+        reopen: true,
+        sync: true,
         orphaned: false,
       }
-      const { projects, windows, tabs, notes, urlTabs } = out;
+      const { projects, windows, icons, tabs, notes, urlTabs } = out;
       for ( const k of Object.keys( data )) {
         if ( k.startsWith( 'project-' )) {
           projects.push( data[k] )
@@ -217,6 +215,8 @@ export default {
             urlTabs[ data[k].url ] = []
           }
           urlTabs[ data[k].url ].push( data[k] );
+        } else if ( k.startsWith( 'icon-' )) {
+          icons[k] = data[k]
         } else if ( k.startsWith( 'note-' )) {
           notes.push( data[k] )
         } else {

@@ -27,19 +27,19 @@ export class AutoId {
 
 export const ProjectId = new AutoId( 'project' );
 export const WindowId = new AutoId( 'window' );
+export const IconId = new AutoId( 'icon' );
 export const TabId = new AutoId( 'tab' );
 export const NoteId = new AutoId( 'note' );
 export const RuleId = new AutoId( 'rule' );
-export const IconId = new AutoId( 'icon' );
 
 export class Model {
   constructor() {
-    const { modelName, fields, autoId: _autoId, defaults } = Model;
-    Object.assign( this, { modelName, fields, _autoId, defaults });
+    const { modelName, fields, attrs, autoId: _autoId, defaults } = Model;
+    Object.assign( this, { modelName, fields, attrs, _autoId, defaults });
     const c = Object.getPrototypeOf( this ).constructor;
     if ( c !== Model ) {
-      const { modelName, fields, autoId: _autoId, defaults } = c;
-      Object.assign( this, { modelName, fields, _autoId, defaults });
+      const { modelName, fields, attrs, autoId: _autoId, defaults } = c;
+      Object.assign( this, { modelName, fields, attrs, _autoId, defaults });
     }
   }
 
@@ -48,7 +48,20 @@ export class Model {
   }
 
   load( obj, init, rename = false ) {
-    Object.assign( this, this.defaults, obj )
+    Object.assign( this, this.defaults );
+    if ( obj.id !== undefined && obj.id !== null ) {
+      this.id = obj.id;
+    }
+    for ( const k of this.fields ) {
+      if ( obj[k] !== undefined && obj[k] !== null ) {
+        this[k] = obj[k];
+      }
+    }
+    for ( const k of this.attrs ) {
+      if ( obj[k] !== undefined && obj[k] !== null ) {
+        this[k] = obj[k];
+      }
+    }
     if ( !this.id || rename ) {
       this.id = this.autoId.next();
       while ( this.id in this.model_registry )
@@ -83,12 +96,34 @@ export class Model {
     }
     return out;
   }
+
+  update( updates ) {
+    Object.assign( this, updates );
+    return this;
+  }
 }
 Object.assign( Model, {
   modelName: null,
   fields: [],
+  attrs: [],
   autoId: { next() { return null }},
   defaults: {},
+  find(f) {
+    const models = state[ this.modelName + 's' ];
+    return Object.values( models ).find(f)
+  },
+  findKey(f) {
+    const models = state[ this.modelName + 's' ];
+    return Object.keys( models ).find( k => f( models[k] ))
+  },
+  filter(f) {
+    const models = state[ this.modelName + 's' ];
+    return Object.values( models ).filter(f);
+  },
+  filterKeys(f) {
+    const models = state[ this.modelName + 's' ];
+    return Object.keys( models ).filter( k => f( models[k] ))
+  },
 });
 
 export class Project extends Model {
@@ -192,7 +227,7 @@ export class Project extends Model {
 }
 Object.assign( Project, {
   modelName: 'project',
-  fields: [ 'name', 'projectIds', 'windowIds' ],
+  fields: [ 'name', 'pid', 'projectIds', 'windowIds' ],
   autoId: ProjectId,
   default: {
     name: 'misc',
@@ -201,8 +236,7 @@ Object.assign( Project, {
     noteIds: [],
   },
   async normalize( prj ) {
-    if ( prj instanceof Project )
-      return prj;
+    if ( prj instanceof Project ) return prj;
     return new Project().load( prj )
   }
 });
@@ -276,6 +310,7 @@ Object.assign( Window, {
   autoId: WindowId,
   fields: [ 'pid', 'title', 'windowId', 'collapsed', 'focused', 'state', 'type',
             'closed', 'tabIds' ],
+  attrs: [ 'windowId' ],
   defaults: {
     window_type: 'normal',
     windowId: null,
@@ -286,8 +321,7 @@ Object.assign( Window, {
     tabs: {},
   },
   async normalize( win ) {
-    if ( win instanceof Window )
-      return win;
+    if ( win instanceof Window ) return win;
     const out = {
       windowId: win.id,
       focused: win.focused,
@@ -335,6 +369,36 @@ Object.assign( ExtensionWindow, {
   })
 });
 
+export class Icon extends Model {
+  constructor() {
+    super();
+    this.init();
+  }
+}
+Object.assign( Icon, {
+  modelName: 'icon',
+  fields: [
+    'url',
+    'data',
+  ],
+  autoId: IconId,
+  defaults: {
+    url: '',
+    data: '',
+  },
+  normalize( icon ) {
+    if ( icon instanceof Icon ) return icon;
+    if ( typeof icon === 'string' ) {
+      const field = [ icon.startsWith( 'data:image/' ) ? 'data' : 'url'];
+      const found = Icon.find( x => x[ field ] === icon );
+      if ( found ) return found;
+      const out =  new Icon().load({[ field ]: icon });
+      state.queueModel( out );
+      return out;
+    }
+  }
+});
+
 export class Tab extends Model {
   constructor() {
     super();
@@ -356,6 +420,45 @@ export class Tab extends Model {
     this.windowId = null;
     state.queueModel( this );
   }
+
+  get icon() {
+    return state.icons[ this.iconidi ];
+  }
+
+  set icon( value ) {
+    const icon = Icon.normalize( value );
+    this.iconid = ( icon && icon.id ) || null;
+  }
+
+  set favIconUrl( value ) {
+    this.icon = value;
+  }
+
+  set mutedInfo( value ) {
+    this.mute = {
+      muted: value.muted,
+      reason: value.reason,
+      extension: value.extensionId
+    }
+  }
+
+  load( obj, init, rename = false ) {
+    const { icon, ...data } = obj;
+    if ( icon && !data.iconid ) {
+      const iconObj = Icon.normalize( icon );
+      if ( iconObj ) data.iconid = iconObj.id;
+    }
+    return super.load( data, init, rename );
+  }
+
+  update( updates ) {
+    const { icon, favIconUrl, mutedInfo, ...data } = updates;
+    if ( icon ) this.icon = icon;
+    if ( favIconUrl ) this.favIconUrl = favIconUrl;
+    if ( mutedInfo ) this.mutedInfo = mutedInfo;
+
+    return super.update( data );
+  }
 }
 Object.assign( Tab, {
   modelName: 'tab',
@@ -364,7 +467,7 @@ Object.assign( Tab, {
     'wid',
     'active',
     'url',
-    'icon',
+    'iconid',
     'title',
     'attention',
     'audible',
@@ -382,6 +485,7 @@ Object.assign( Tab, {
     'pinned',
     'status',
   ],
+  attrs: [ 'tabId' ],
   autoId: TabId,
   defaults: {
     tabId: null,
@@ -405,9 +509,8 @@ Object.assign( Tab, {
     status: null
   },
   normalize( tab ) {
-    if ( tab instanceof Tab )
-      return tab;
-    const out = {
+    if ( tab instanceof Tab ) return tab;
+    const data = {
       tabId: tab.id,
       active: tab.active,
       url: tab.url,
@@ -437,9 +540,10 @@ Object.assign( Tab, {
       width: tab.width,
       windowId: tab.windowId,
     }
+    const out = new Tab().load( data );
     if ( tab.favIconUrl )
       out.icon = tab.favIconUrl;
-    return new Tab().load( out );
+    return out;
   }
 });
 
@@ -494,8 +598,7 @@ Object.assign( Note, {
     parentIds: [],
   },
   async normalize( note ) {
-    if ( note instanceof Note )
-      return note;
+    if ( note instanceof Note ) return note;
     return new Note().load( note )
   }
 });
@@ -517,8 +620,7 @@ Object.assign( Rule, {
     action: 'forget',
   },
   async normalize( rule ) {
-    if ( rule instanceof Rule )
-      return rule;
+    if ( rule instanceof Rule ) return rule;
     return new Rule().load( rule )
   }
 });
@@ -529,14 +631,15 @@ export default {
   Project,
   ExtensionWindow,
   Window,
+  Icon,
   Tab,
-  Rule,
   Note,
+  Rule,
   AutoId,
   ProjectId,
   WindowId,
+  IconId,
   TabId,
   NoteId,
   RuleId,
-  IconId,
 }

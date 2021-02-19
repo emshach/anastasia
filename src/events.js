@@ -2,9 +2,42 @@ import store from '@/data'
 import { controlPanel as cp, closePrompt } from '@/controllers'
 import { loadFromUI } from '@/actions'
 import { findOpenPos } from '@/util'
+import logger from '@/lib/logger'
 
 const TAB_UPDATE_DELAY = 500;
 
+export const pendingWindows = {};
+
+function internWindow( win ) {
+  delete pendingWindows[ win.id ];
+  if ( store.controlIds[ win.id ])
+    return;
+  if ( store.openWindows[ win.id ]) return
+  loadFromUI([ win ]);
+  const w = !store.controlIds[ win.id ] && store.openWindows[ win.id ];
+  if ( !w ) return;
+  win = store.save(w)
+  cp.send( 'AddWindow', { win });
+}
+
+async function _debounceTabWindow({ tabId, tab, windowId }) {
+  if ( !windowId ) {
+    if ( !tab ) {
+      if ( !tabId ) return;
+      tab = await browser.tabs.get( tabId );
+      if ( !tab ) return;
+    }
+    if ( !tab.windowId ) return;
+    windowId = tab.windowId;
+  }
+  if ( !pendingWindows[ windowId ]) return;
+  const { timer, win } = pendingWindows[ windowId ];
+  clearTimeout( timer );
+  pendingWindows[ windowId ] = {
+    timer: setTimeout(() => internWindow( win ), 1000 ),
+    win
+  };
+}
 export async function onWindowCreated( win ) {
   // console.log( 'onWindowCreated', win );
   if ( store.controlIds[ win.id ])
@@ -12,15 +45,12 @@ export async function onWindowCreated( win ) {
   await ready();
   if ( store.controlIds[ win.id ])
     return;
-  setTimeout(() => {
-    if ( store.controlIds[ win.id ])
-      return;
-    loadFromUI([ win ]);
-    const w = !store.controlIds[ win.id ] && store.openWindows[ win.id ];
-    if ( !w ) return;
-    win = store.save(w)
-    cp.send( 'AddWindow', { win });
-  }, 750 );
+  if ( pendingWindows[ win.id ])
+    clearTimeout( pendingWindows[ win.id ].win )
+  pendingWindows[ win.id ] = {
+    timer: setTimeout(() => internWindow( win ), 1000 ),
+    win
+  };
 }
 
 export function onWindowRemoved( winId ) {
@@ -103,7 +133,7 @@ export async function onTabActivated({ previousTabId, tabId, windowId }) {
 
 export async function onTabAttached( tabId, { newWindowId, newPosition }) {
   await ready();
-  console.log( 'onTabAttached', { tabId, newWindowId, newPosition });
+  logger.log( 'onTabAttached', { tabId, newWindowId, newPosition });
   const tab = store.openTabs[ tabId ];
   const w = store.openWindows[ newWindowId ];
   if ( !tab || !w )
@@ -122,13 +152,14 @@ export async function onTabAttached( tabId, { newWindowId, newPosition }) {
 }
 
 export async function onTabCreated( tab ) {
-  console.log( 'onTabCreated', tab );
+  logger.log( 'onTabCreated', tab );
   const tabId = tab.id;
   if ( store.controlTabIds[ tabId ]) {
     // console.log( 'control panel tab, ignoring' );
     return;
   }
   await ready();
+  _debounceTabWindow({ tab });
   if ( store.openTabs[ tabId ])
     return;
   setTimeout( async () => {
@@ -138,7 +169,7 @@ export async function onTabCreated( tab ) {
     const w = store.openWindows[ tab.windowId ];
     if (!w)
       return;
-    console.log( 'processing onTabCreated', tab, w );
+    logger.log( 'processing onTabCreated', tab, w );
     let pos = -1;
     if ( tab.index >= w.tabIds.length ) {
       tab = store.addTab( tab, w, pos );
@@ -162,7 +193,7 @@ export async function onTabCreated( tab ) {
       if ( match ) {
         const tid = match.id;
         match.closed = false;
-        Object.assign( match, {
+        match.update({
           tabId           : tab.id,
           active          : tab.active,
           icon            : match.icon || tab.favIconUrl,
@@ -205,12 +236,16 @@ export async function onTabCreated( tab ) {
     }
     tab = store.saveAll([ w, tab ])[ tab.id ];
     cp.send( 'AddTab', { tab, pos });
+    const icon = store.state.icons[ tab.iconid ];
+    if ( icon ) {
+      cp.send( 'AddIcon', { icon: icon.toJson() });
+    }
   }, TAB_UPDATE_DELAY );
 }
 
 export async function onTabDetached( tabId, { oldWindowId, oldPosition }) {
   await ready();
-  console.log( 'onTabDetached', { tabId, oldWindowId, oldPosition });
+  logger.log( 'onTabDetached', { tabId, oldWindowId, oldPosition });
   const tab = store.openTabs[ tabId ];
   if ( !tab ) return;
   tabId = tab.id;
@@ -248,7 +283,7 @@ export async function onTabHighlighted({ windowId, tabIds }) {
 
 export async function onTabMoved( tabId, { windowId, fromIndex, toIndex }) {
   await ready();
-  console.log( 'onTabMoved', { tabId, windowId, fromIndex, toIndex });
+  logger.log( 'onTabMoved', { tabId, windowId, fromIndex, toIndex });
   const tab = store.openTabs[ tabId ];
   if ( !tab ) return;
   tab.index = toIndex;
@@ -262,7 +297,7 @@ export async function onTabMoved( tabId, { windowId, fromIndex, toIndex }) {
 
 export async function onTabRemoved( tabId, { windowId, isWindowClosing }) {
   await ready();
-  console.log( 'onTabRemoved', { tabId, windowId, isWindowClosing });
+  logger.log( 'onTabRemoved', { tabId, windowId, isWindowClosing });
   const tab = store.openTabs[ tabId ];
   const w = store.openWindows[ windowId ];
   if ( !tab || !w ) return;
@@ -304,25 +339,19 @@ export async function onTabReplaced( tabId, { addedTabId, removedTabId }) {
 
 export async function onTabUpdated( tabId, changes ) {
   await ready();
-  console.log( 'onTabUpdated', tabId );
+  logger.log( 'onTabUpdated', tabId );
+  _debounceTabWindow({ tabId });
   const tab = store.openTabs[ tabId ];
   if ( !tab ) return;
-  Object.assign( tab, changes );
-  if ( changes.mutedInfo ) {
-    tab.mute = {
-      muted: tab.mutedInfo.muted,
-      reason: tab.mutedInfo.reason,
-      extension: tab.mutedInfo.extensionId
-    }
-    delete tab.mutedInfo;
-  }
-  if ( changes.favIconUrl ) {
-    tab.icon = tab.favIconUrl;
-    delete tab.favIconUrl;
-  }
+  tab.update( changes );
   store.save( tab );
   tabId = tab.id;
-  cp.send( 'UpdateTab', { tabId, changes, tab });
+  // const { favIconUrl, mutedInfo, ...data } = changes
+  cp.send( 'UpdateTab', { tabId, changes, tab: tab.toJson() });
+  const icon = store.state.icons[ tab.iconid ];
+  if ( icon ) {
+    cp.send( 'AddIcon', { icon: icon.toJson() });
+  }
 }
 
 export async function onTabZoomChanged({ tabId, newZoomFactor, zoomSettings }) {

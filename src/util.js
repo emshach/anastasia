@@ -8,7 +8,7 @@ export function urlsToRegexp( urls ) {
   }).join( '' ) + '$');
 }
 
-export function windowDiff( storedWindow, uiWindow ) {
+export function windowDiff( storedWindow, testWindow ) {
   const parseData = ( m, tabs ) => {
     const found = [],
           closed = [],
@@ -24,10 +24,11 @@ export function windowDiff( storedWindow, uiWindow ) {
           const [ tid ] = x.split( ':::::' );
           found.push({ tid, tabId: tabs[j].tabId });
           ++foundCount;
+          lastTab = tid;
         } else {
           unknown.push([ lastTab, tabs[j] ]);
         }
-        lastTab = tabs[j].tabId;
+        lastTab = tabs[j].id;
       } else if (x) {
         let urls = x.split( '\n' );
         urls.pop();
@@ -39,14 +40,14 @@ export function windowDiff( storedWindow, uiWindow ) {
     console.log({ m, found, closed, unknown, foundCount, closedCount });
     return { found, closed, unknown, foundCount, closedCount };
   };
-  const rx = uiWindow.tabsMatch;
+  const rx = testWindow.tabsMatch;
   const open = storedWindow.openUrls.match( rx );
   const all = storedWindow.allUrls.match( rx );
-  const tabs = uiWindow.tabIds.map( tid => store.state.tabs[ tid ]);
-  // console.log({ rx, open, all, tabs });
+  const tabs = testWindow.tabIds.map( tid => store.state.tabs[ tid ]);
+  console.log({ rx, open, all, tabs });
   let d = parseData( open, tabs ),
       allData;
-  if ( d.foundCount < uiWindow.tabIds.length ) {
+  if ( d.foundCount < testWindow.tabIds.length ) {
     allData = parseData( all, tabs );
     if ( allData.foundCount > d.foundCount )
       d = allData;
@@ -54,7 +55,7 @@ export function windowDiff( storedWindow, uiWindow ) {
       allData = null;
   }
   const reopen = [];
-  if ( d.foundCount === uiWindow.tabIds.length && d.closedCount === 0 ) {
+  if ( d.foundCount === testWindow.tabIds.length && d.closedCount === 0 ) {
     if ( allData )
       d.found.forEach(({ tid }) => {
         if ( store.state.tabs[ tid ].closed )

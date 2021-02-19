@@ -1,4 +1,4 @@
-import { Project, Window, Tab } from '@/models'
+import { Project, Window, Icon, Tab, Rule, Note } from '@/models'
 import state from '@/state'
 
 export default {
@@ -39,6 +39,7 @@ export default {
       activeWindow,
       projectIds,
       windowIds,
+      iconIds,
       tabIds,
       // tagIds: [],
       // noteIds: [],
@@ -48,6 +49,7 @@ export default {
       'activeWindow',
       'projectIds',
       'windowIds',
+      'iconIds',
       'tabIds',
     ]);
     if ( controlPanelOpen !== true && controlPanelOpen !== false )
@@ -58,6 +60,8 @@ export default {
       projectIds = this.state.projectIds || [];
     if ( !windowIds )
       windowIds = this.state.windowIds || [];
+    if ( !iconIds )
+      iconIds = this.state.iconIds || [];
     if ( !tabIds )
       tabIds = this.state.tabIds || [];
     if ( !activeWindow )
@@ -75,13 +79,14 @@ export default {
       });
     }
     const loaded   = true;
-    const [ projects, windows, tabs ] = await Promise.all([
+    const [ projects, windows, icons, tabs ] = await Promise.all([
       projectIds ? await this.getData( projectIds ) : {},
       windowIds  ? await this.getData( windowIds )  : {},
+      iconIds    ? await this.getData( iconIds )    : {},
       tabIds     ? await this.getData( tabIds )     : {},
     ]);
 
-    console.log( 'loading', { projects, windows, tabs });
+    console.log( 'loading', { projects, windows, icons, tabs });
     projectIds = projectIds.filter( p => {
       const prj = projects[p];
       if ( prj )
@@ -100,6 +105,10 @@ export default {
       }
       return !!win;
     });
+
+    for ( const icon of Object.values( icons )) {
+      new Icon().load( icon );
+    }
 
     const liveTabIds = {};
     for ( const wid of windowIds ) {
@@ -232,7 +241,7 @@ export default {
     const pix = this.state.projectIds.indexOf( prjId );
     if ( pix > -1 ) {
       this.state.projectIds.splice( pix, 1 );
-        delete this.state.projects[ prjId ];
+      delete this.state.projects[ prjId ];
       this.clearData([ prjId ]);
     }
   },
@@ -266,6 +275,9 @@ export default {
   },
   importWindow( win ) {
     return new Window().load( win, false, true );
+  },
+  importIcon( icon ) {
+    return Icon.normalize( icon )
   },
   addTab( tab, win, pos ) {
     console.log( 'addTab', { tab, win, pos });

@@ -1,5 +1,5 @@
 <template lang="pug">
-  options-page( @ctrl=send )
+  options-page( @ctrl='send' )
 </template>
 
 <script>

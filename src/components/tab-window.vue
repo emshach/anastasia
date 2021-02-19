@@ -1,64 +1,56 @@
-<template lang="html">
-  <div :class=classes @click=selectWindow >
-    <div :class="['header', editing ? 'editing' : '']">
-      <transition name="fade" mode="out-in">
-        <div v-if="editing" class="inner" key="edit">
-          <form @submit.prevent=submitWindow @reset.prevent=resetWindow>
-            <input v-model=editing.title />
-            <div class="space" />
-            <div class="ctrl-after">
-              <a href="#" class="btn edit-btn" @click.stop.prevent=resetWindow
-                 title="submit">
-                <img src="icons/check.svg" />
-              </a>
-              <a href="#" class="btn edit-btn" @click.stop.prevent=submitWindow
-                 title="reset">
-                <img src="icons/ff-close.svg" />
-              </a>
-            </div>
-          </form>
-        </div>
-        <div v-else class="inner" key="normal">
-          <slot name="ctrl-before">
-            <div class="ctrl-before">
-              <slot name="ctrl-before-prepend" />
-              <a href="#" class="btn close-btn" @click.stop.prevent=closeWindow>
-                <img src="icons/ff-close.svg" />
-              </a>
-              <slot name="ctrl-before-append" />
-            </div>
-          </slot>
-          <div class="title">
-            <slot name="title">
-              <a href="#" @click.stop.prevent=focusWindow >{{ window.title }}</a>
-            </slot>
-          </div>
-          <div class="space" />
-          <slot name="ctrl-after">
-            <div class="ctrl-after">
-              <slot name="ctrl-after-prepend" />
-              <a href="#" class="btn edit-btn" @click.stop.prevent=editWindow
-                 title="edit">
-                <img src="icons/edit.svg" />
-              </a>
-              <slot name="ctrl-after-append" />
-            </div>
-          </slot>
-        </div>
-      </transition>
-    </div>
-    <div class="body">
-      <transition-group name="list" tag="div" class="tablist">
-        <tab-item v-for="( t, i ) in window.tabs" :tab=t :key=t.id
-                  :opening="tabState[i].opening"
-                  :closing="tabState[i].closing"
-                  class="tabitem-test"
-                  @ctrl=pass />
-      </transition-group>
-    </div>
-    <div class="footer">
-  </div>
-    </div>
+<template lang="pug">
+.tab-window( :class='classes' @click='selectWindow' )
+  .header( :class='{ editing }' )
+    transition( name='fade' mode='out-in' )
+      .inner( v-if='editing' key='edit' )
+        form( @submit.prevent='submitWindow' @reset.prevent='resetWindow' )
+          input( v-model='editing.title' )
+          .space
+          .ctrl-after
+            a.btn.edit-btn( href='#' title='submit'
+              @click.stop.prevent='resetWindow'
+            )
+              img( src='icons/check.svg' )
+            a.btn.edit-btn(
+              href='#'
+              title='reset'
+              @click.stop.prevent='submitWindow'
+            )
+              img( src='icons/ff-close.svg' )
+      .inner( v-else key='normal' )
+        slot( name='ctrl-before' )
+          .ctrl-before
+            slot( name='ctrl-before-prepend' )
+            a.btn.close-btn( href='#' @click.stop.prevent='closeWindow' )
+              img( src='icons/ff-close.svg' )
+            slot( name='ctrl-before-append' )
+        .title
+          slot( name='title' )
+            a( href='#' @click.stop.prevent='focusWindow' )
+              | {{ window.title }}
+        .space
+        slot( name='ctrl-after' )
+          .ctrl-after
+            slot( name='ctrl-after-prepend' )
+            a.btn.edit-btn(
+              href='#'
+              title='edit'
+              @click.stop.prevent='editWindow'
+            )
+              img( src='icons/edit.svg' )
+            slot( name='ctrl-after-append' )
+  .body
+    transition-group.tablist( name='list' tag='div' )
+      tab-item(
+        v-for='( t, i ) in window.tabs'
+        :tab='t'
+        :key='t.id'
+        :opening='tabState[i].opening'
+        :closing='tabState[i].closing'
+        class='tabitem-test'
+        @ctrl='pass'
+      )
+  .footer
 </template>
 
 <script lang="js">
@@ -128,7 +120,6 @@ export default {
     },
     classes() {
       return [{
-          'tab-window': true,
           collapsed: this.window.collapsed,
           active: this.window.focused,
         },
