@@ -1,6 +1,6 @@
 <template lang="pug">
-.tab-window( :class='classes' @click='selectWindow' )
-  .header( :class='{ editing }' )
+.tab-window( :class='classes' )
+  .header( :class='{ editing, hovered }' )
     transition( name='fade' mode='out-in' )
       .inner( v-if='editing' key='edit' )
         form( @submit.prevent='submitWindow' @reset.prevent='resetWindow' )
@@ -17,7 +17,13 @@
               @click.stop.prevent='submitWindow'
             )
               img( src='icons/ff-close.svg' )
-      .inner( v-else key='normal' )
+      .inner(
+        v-else
+        v-hover-intent='hover'
+        key='normal'
+        @click.prevent='selectWindow'
+        @mouseleave='unHover'
+      )
         slot( name='ctrl-before' )
           .ctrl-before
             slot( name='ctrl-before-prepend' )
@@ -39,93 +45,196 @@
             )
               img( src='icons/edit.svg' )
             slot( name='ctrl-after-append' )
-  .body
-    transition-group.tablist( name='list' tag='div' )
-      tab-item(
-        v-for='( t, i ) in window.tabs'
-        :tab='t'
-        :key='t.id'
-        :opening='tabState[i].opening'
-        :closing='tabState[i].closing'
-        class='tabitem-test'
+  transition-group.body( name='list' tag='div' )
+    template( v-for='g in tabGroups' )
+      tab-group(
+        v-if=`g.type === 'group'`
+        :key='g.tabs[0].id'
+        :gid='`group-${g.tabs[0].id}`'
+        :tabIds='g.ids'
+        :tabs='g.tabs'
+        :point='point'
+        :search='search'
         @ctrl='pass'
+        @hover='passHover'
+        @unhover='passUnhover'
+      )
+      closed-tabs(
+        v-else-if=`g.type === 'closed'`
+        :key='g.tabs[0].id'
+        :gid='`group-${g.tabs[0].id}`'
+        :tabs='g.tabs'
+        :point='point'
+        :search='search'
+        @ctrl='pass'
+        @hover='passHover'
+        @unhover='passUnhover'
+      )
+      open-tabs( 
+        v-else
+        :key='g.tabs[0].id'
+        :tabs='g.tabs'
+        :point='point'
+        :search='search'
+        @ctrl='pass'
+        @hover='passHover'
+        @unhover='passUnhover'
       )
   .footer
 </template>
 
 <script lang="js">
-import TabItem from '@/components/tab-item'
+import TabGroup from '@/components/tab-group'
+import ClosedTabs from '@/components/closed-tabs'
+import OpenTabs from '@/components/open-tabs'
 import state from '@/control-panel/state'
 
 export default {
   name: 'TabWindow',
   mixins: [],
-  components: { TabItem },
+  components: { TabGroup, ClosedTabs, OpenTabs },
   props: {
     window: {
       type: Object,
       required: true,
+    },
+    point: {
+      type: String,
+      default: ''
+    },
+    search: {
+      type: [ RegExp, String ],
+      default: ''
     }
   },
   data() {
     return {
       editing: null,
-    };
+      leaving: null,
+    }
   },
   created() {},
   mounted() {},
   methods: {
+    hover() {
+      this.$emit( 'hover', this.window.id )
+    },
+    unHover() {
+      this.$emit( 'unhover', this.window.id )
+    },
+    passHover( $event ) {
+      this.$emit( 'hover', $event )
+    },
+    passUnhover( $event ) {
+      this.$emit( 'unhover', $event )
+    },
     focusWindow() {
-      this.$emit( 'ctrl', { op: 'focusWindow', windowId: this.window.id });
+      this.$emit( 'ctrl', { op: 'focusWindow', windowId: this.window.id })
     },
     editWindow() {
       this.editing = {
         title: this.window.title
-      };
+      }
     },
     submitWindow() {
       this.$emit( 'ctrl', {
         op: 'editWindow',
         windowId: this.window.id,
         updates: this.editing
-      });
-      this.editing = null;
+      })
+      this.editing = null
     },
     resetWindow() {
-      this.editing = null;
+      this.editing = null
     },
     closeWindow() {
-      this.$emit( 'ctrl', { op: 'closeWindow', windowId: this.window.id });
+      this.$emit( 'ctrl', { op: 'closeWindow', windowId: this.window.id })
     },
     selectWindow() {
-      console.log( 'selecting window', this.window );
-      state.setFocus( this.window );
+      console.log( 'selecting window', this.window )
+      state.setFocus( this.window )
     },
-    pass(e) {
-      this.$emit( 'ctrl', e );
+    pass( $event ) {
+      this.$emit( 'ctrl', $event )
     }
   },
   computed: {
+    hovered() {
+      return this.point === this.window.id
+    },
     tabState() {
-      const t = this.window.tabs;
-      let last;
-      let next;
+      const t = this.window.tabs
+      let last
+      let next
       return this.window.tabs.map(( cr, i ) => {
-        next = t[ i + 1 ];
-        const opening = !last || last.closed;
-        const closing = !next || next.closed;
-        last = cr;
-        return { opening, closing };
-      });
+        next = t[ i + 1 ]
+        const opening = !last || last.closed
+        const closing = !next || next.closed
+        last = cr
+        return { opening, closing }
+      })
+    },
+    tabGroups() {
+      const tabs = this.window.tabs
+      const groups = []
+      let last = { tabs: [] }
+      let lastTab = null
+      this.window.tabs.forEach( t => {
+        if ( t.openerId ) {
+          if ( last.type === 'group' && last.ids[ t.openerId ]) {
+            last.ids[ t.id ] = true
+            last.tabs.push(t)
+          } else if ( lastTab && lastTab.id === t.openerId ) {
+            if ( last.tabs.length === 1 ) {
+              groups.pop()
+            } else {
+              last.tabs.pop()
+            }
+            last = {
+              type: 'group',
+              ids: {
+                [ lastTab.id ]: true,
+                [ t.id ]: true
+              },
+              tabs: [ lastTab, t ]
+            }
+            groups.push( last )
+            lastTab = t
+          }
+          return
+        }
+        if ( t.closed ) {
+          if ( last.type === 'closed' ) {
+            last.tabs.push(t)
+          } else {
+            last = {
+              type: 'closed',
+              tabs: [t]
+            }
+            groups.push( last )
+          }
+        } else if ( last.type === 'open' ) {
+          last.tabs.push(t)
+        } else {
+          last = {
+            type: 'open',
+            tabs: [t]
+          }
+          groups.push( last )
+        }
+        lastTab = t
+      })
+      return groups
     },
     classes() {
-      return [{
+      return [
+        {
           collapsed: this.window.collapsed,
           active: this.window.focused,
         },
         `state-${this.window.state}`,
         `type-${this.window.type}`,
-      ];
+      ]
     }
   }
 }
@@ -133,14 +242,16 @@ export default {
 
 <style lang="scss">
 .tab-window {
+  margin-bottom: 1em;
   > .header {
     color: grey;
     font-weight: bold;
     padding: 4px;
     transition: 140ms;
     transition-timing-function: linear;
-    height: 2em;
+    height: auto;
     overflow: hidden;
+    box-sizing: border-box;
     > .inner {
       position: relative;
       height: 100%;
@@ -164,37 +275,32 @@ export default {
       }
     }
     .ctrl-after {
+      transition: 300ms;
+      position: relative;
       justify-self: flex-end;
-      clear: both;
+      position: relative;
+      height: 0;
     }
     .space {
+      transition: 300ms;
+      position: relative;
       flex: 1;
+      height: 0;
     }
-  }
-  &.active > .header {
-    color: lightskyblue;
-    a, a:visited, a:active, a:hover {
-      color: lightskyblue;
-    }
-  }
-  > .body {
-    padding-left:4px;
-  }
-  margin-top: 8px;
-  /* border-top: 1px solid rgba(160,215,255,0.05); */
-  &:first-child {
-    margin-top: 0;
-    border-top: 0 none;
-  }
-  &.active:hover, &:hover, &.selected {
-    > .header {
-      border-top-left-radius: 4px;
-      border-bottom-left-radius: 4px;
+    &.hovered {
+      .ctrl-before,.ctrl-after, .space {
+        opacity: 1;
+        height: auto;
+      }
+      .ctrl-before {
+        top: 0;
+      }
+      border-radius: 3px;
       margin-bottom: 2px;
       background: lightskyblue;
       color: black;
       font-size: 120%;
-      height: 3em;
+      height: auto;
       a, a:visited, a:active, a:hover {
         color: black;
       }
@@ -203,24 +309,65 @@ export default {
       }
     }
   }
-  &.active > .header:hover, > .header:hover, > .header.editing,
-  &.selected > .header {
-    color: black;
-    background: lightskyblue;
-    height: 8em;
-    a, a:visited, a:active, a:hover {
-      color: black;
-    }
-    .ctrl-before {
-      top: 0;
-      height: 20px;
-    }
-    .ctrl-before,.ctrl-after {
-      opacity: 1;
+  &.active, &.selected {
+    > .header {
+      color: lightskyblue;
+      a, a:visited, a:active, a:hover {
+        color: lightskyblue;
+      }
+      &.hovered {
+        .ctrl-before,.ctrl-after, .space {
+          opacity: 1;
+        }
+        .ctrl-before {
+          top: 0;
+        }
+        border-radius: 3px;
+        margin-bottom: 2px;
+        background: lightskyblue;
+        color: black;
+        font-size: 120%;
+        height: auto;
+        a, a:visited, a:active, a:hover {
+          color: black;
+        }
+        * {
+          color: black;
+        }
+      }
     }
   }
-  &.selected >.header {
-    height: 20em;
+  > .body {
+    .tablist {
+      position: relative;
+      border-radius: 3px;
+      overflow: hidden;
+    }
   }
+  margin-top: 8px;
+  /* border-top: 1px solid rgba(160,215,255,0.05); */
+  &:first-child {
+    margin-top: 0;
+    border-top: 0 none;
+  }
+  /* &.active > .header:hover, > .header:hover, > .header.editing, */
+  /* &.selected > .header { */
+  /*   color: black; */
+  /*   background: lightskyblue; */
+  /*   height: 8em; */
+  /*   a, a:visited, a:active, a:hover { */
+  /*     color: black; */
+  /*   } */
+  /*   .ctrl-before { */
+  /*     top: 0; */
+  /*     height: 20px; */
+  /*   } */
+  /*   .ctrl-before,.ctrl-after { */
+  /*     opacity: 1; */
+  /*   } */
+  /* } */
+  /* &.selected >.header { */
+  /*   height: 20em; */
+  /* } */
 }
 </style>

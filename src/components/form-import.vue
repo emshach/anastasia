@@ -307,5 +307,10 @@ export default {
       padding: 0.5em;
     }
   }
+  .json-editor {
+    button {
+      background-color: transparent;
+    }
+  }
 }
 </style>

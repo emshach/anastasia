@@ -109,6 +109,11 @@ module.exports = {
     // resolve: {
     //   alias: require('./aliases.config').webpack
     // },
+    resolve: {
+      alias: {
+        icons: path.resolve(__dirname, 'node_modules/vue-material-design-icons' )
+      }
+    },
     plugins: [
       new CopyPlugin([{
         from: path.join( __dirname, 'src/background.html' ),

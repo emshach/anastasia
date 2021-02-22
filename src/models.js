@@ -351,11 +351,19 @@ Object.assign( Window, {
     out.tabIds = tabIds;
 
     win = new Window().load( out );
-    for ( const t of win.tabList )
+    for ( const t of win.tabList ) {
+      if ( t.openerTabId ) {
+        const opener = Tab.find( tab => tab.tabId === t.openerTabId );
+        if ( opener ) {
+          t.openerId = opener.id;
+          state.queueModel(t);
+        }
+      }
       if ( t.wid !== win.id ) {
         t.wid = win.id;
         state.queueModel(t);
       }
+    }
     if ( win.project )
       win.project.addWindow( win ); // just in case
     return win;
@@ -465,6 +473,7 @@ Object.assign( Tab, {
   fields: [
     'id',
     'wid',
+    'openerId',
     'active',
     'url',
     'iconid',
@@ -491,6 +500,7 @@ Object.assign( Tab, {
     tabId: null,
     windowId: null,
     wid: null,
+    openerId: null,
     active: false,
     closed: false,
     url: 'about:home',

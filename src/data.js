@@ -267,7 +267,11 @@ export default {
       return tid;
     }).concat( win.id )));
     delete this.openWindows[ win.windowId ];
+    console.log( 'removing wiwndow', win );
+    if ( win.project )
+      win.project.removeWindow( win );
     this.state.remove( win );
+    this.save();
     return win;
   },
   cleanupWindow( win ) {
@@ -287,6 +291,12 @@ export default {
     }
     if ( tab.tabId )
       this.openTabs[ tab.tabId ] = tab;
+    if ( tab.openerTabId ) {
+      const opener = Tab.find( t => t.tabId === tab.openerTabId );
+      if ( opener ) {
+        tab.openerId = opener.id;
+      }
+    }
     this.save( tab );
     return tab;
   },

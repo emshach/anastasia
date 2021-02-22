@@ -123,10 +123,18 @@ export async function onTabActivated({ previousTabId, tabId, windowId }) {
     store.saveAll([ prev, tab ]);
     cp.send( 'FocusTab', { previousTabId, tabId, windowId });
   } else {
+    const updates = [];
+    w.tabList.forEach( t => {
+      if ( t !== tab && t.active ) {
+        t.active = false;
+        updates.push(t);
+      }
+    });
     tabId = tab.id;
     windowId = w.id;
     tab.active = true;
-    store.save( tab );
+    updates.push( tab )
+    store.saveAll( updates );
     cp.send( 'FocusTab', { tabId, windowId });
   }
 }

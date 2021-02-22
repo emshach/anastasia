@@ -1,6 +1,6 @@
 <template lang="pug">
 .tab-project
-  .header
+  .header( v-hover-intent='hover' @mouseleave='unHover' :class='{ hovered }' )
     .ctrl-before
        slot( name='ctrl-before' )
     .title
@@ -12,7 +12,11 @@
       v-for='w in project.windows'
       :key='w.id'
       :window='w'
+      :point='point'
+      :search='search'
       @ctrl='pass'
+      @hover='passHover'
+      @unhover='passUnhover'
     )
   .footer
 </template>
@@ -27,20 +31,44 @@ export default {
     project: {
       type: Object,
       required: true,
+    },
+    point: {
+      type: String,
+      default: ''
+    },
+    search: {
+      type: [ RegExp, String ],
+      default: ''
     }
   },
   data() {
     return {
-    };
+    }
   },
   created() {},
   mounted() {},
   methods: {
-    pass(e) {
-      this.$emit( 'ctrl', e );
+    hover() {
+      this.$emit( 'hover', this.project.id )
+    },
+    unHover() {
+      this.$emit( 'unhover', this.project.id )
+    },
+    passHover( $event ) {
+      this.$emit( 'hover', $event )
+    },
+    passUnhover( $event ) {
+      this.$emit( 'unhover', $event )
+    },
+    pass( $event ) {
+      this.$emit( 'ctrl', $event )
     }
   },
-  computed: {}
+  computed: {
+    hovered() {
+      return this.point === this.project.id
+    }
+  }
 }
 </script>
 
@@ -55,7 +83,7 @@ export default {
     margin: 4px 0;
   }
   > .body {
-    padding-left: 4px;
+    padding: 2px;
   }
   &:hover > .header {
     color: lightskyblue;

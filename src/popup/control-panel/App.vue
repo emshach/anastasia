@@ -1,16 +1,33 @@
 <template lang="pug">
   #app
-    tab-project( v-for="p in topProjects" :project='p' :key='p.id' @ctrl='send' )
+    k-header( :search='searchTerm' @menu='openSidebar' @search='search' )
+    tab-project( 
+      v-for='p in topProjects' 
+      :project='p'
+      :key='p.id'
+      :point='point'
+      :search='searchRx'
+      @ctrl='send'
+      @hover='setPoint'
+      @unhover='unsetPoint'
+    )
+    k-footer
+    transition( name='fade' appear )
+      .overlay( v-show='showOverlay' )
+    k-sidebar( :open='sidebarOpen' @ctrl='send' @close='closeSidebar' )
 </template>
 
 <script>
+import KHeader from '@/components/blocks/k-header'
+import KFooter from '@/components/blocks/k-footer'
+import KSidebar from '@/components/blocks/k-sidebar'
 import TabProject from '@/components/tab-project'
 import state from '@/control-panel/state'
 
 export default {
   name: 'App',
   mixins: [],
-  components: { TabProject },
+  components: { KHeader, TabProject, KFooter, KSidebar },
   props: {},
   data() {
     return {
@@ -26,6 +43,10 @@ export default {
       controlActive: false,
       loading: true,
       port: null,
+      searchTerm: false,
+      point: '',
+      unsettingPoint: null,
+      sidebarOpen: false,
     }
   },
   created() {
@@ -42,16 +63,35 @@ export default {
     this.tabs.ghost = {
       title: 'ghost'
     }
-
-    document.addEventListener( 'keyup', e => {
-      console.log( 'onKeyUp', e )
-    })
+    document.addEventListener( 'keyup', this.onKeyUp )
   },
   mounted() {},
   beforeDestroy() {
     this.port = null
+    document.RemoveEventListener( 'keyup', this.onKeyUp )
   },
   methods: {
+    setPoint( $event ) {
+      this.point = $event
+    },
+    unsetPoint( $event ) {
+      if ( this.point !== $event ) return
+      if ( this.unsettingPoint )
+        clearTimeout( this.unsettingPoint )
+      this.unsettingPoint = setTimeout(() => {
+        if ( this.point === $event )
+          this.point = ''
+      }, 3000 )
+    },
+    openSidebar() {
+      this.sidebarOpen = true
+    },
+    closeSidebar() {
+      this.sidebarOpen = false
+    },
+    search( $event ) {
+      this.searchTerm = $event
+    },
     async onLoad({ state }) {
       this.loading = false
       // console.log( 'got state', state )
@@ -59,6 +99,15 @@ export default {
     },
     setWindowId({ windowId }) {
       this.windowId = windowId
+    },
+    onKeyUp( $event  ) {
+      // console.log( 'onKeyUp', $event )
+      if ( $event.key === 'Escape' ) {
+        if ( this.sidebarOpen )
+          this.sidebarOpen = false
+        else if ( this.searchTerm !== false )
+          this.searchTerm = false
+      }
     },
     onAddProject({ project, pos }) {
       if ( this.projects[ project.id ])
@@ -98,6 +147,7 @@ export default {
     },
     onSuspendWindow({ windowId }) {
       this.windows[ windowId ].closed = true
+      this.onBlurWindow({ windowId })
     },
     onResumeWindow({ windowId }) {
       this.windows[ windowId ].closed = false
@@ -108,6 +158,11 @@ export default {
       w = this.windows[ windowId ]
       w.focused = true
       this.activeWindow = windowId
+    },
+    onBlurWindow({ windowId }) {
+      const w = this.windows[ windowId ]
+      w.focused = false
+      this.activeWindow = null
     },
     onSetWindowCollapse({ windowId, collapse }) {
       this.windows[ windowId ].collapse = collapse
@@ -233,12 +288,28 @@ export default {
   computed: {
     topProjects() {
       return this.projectIds.map( this.toFullProject )
+    },
+    searchRx() {
+      if ( !this.searchTerm ) return ''
+      return new RegExp( this.searchTerm.split( /\s+/g ).join( '.*?' ), 'i' )
+    },
+    showOverlay() {
+      return this.sidebarOpen
     }
   }
 }
 </script>
-<style>
+<style lang="scss">
 #app {
   overflow-x: hidden;
+  padding-top: 4em;
+  .overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 100vw;
+    transition: opacity 400ms;    background: rgba(0,0,0,0.85);
+  }
 }
 </style>

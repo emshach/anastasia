@@ -1,5 +1,6 @@
 html, body {
-  background: #102923;
+  // background: #102923;
+  background: #001810;
   color: lightskyblue;
   font-family: sans;
   margin: 0;
@@ -66,6 +67,9 @@ a, a:visited, a:active, a:hover {
       background-color: rgba(255,255,255,0.35);
     }
   }
+}
+.ctrl-after {
+  justify-content: flex-end;
 }
 .header input {
   width: 100%;

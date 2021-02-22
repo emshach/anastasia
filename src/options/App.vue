@@ -61,10 +61,13 @@ export default {
 <style lang="scss">
 html, body {
   background: transparent;
+  margin: 0;
+  padding: 0;
+  height: 100%;
 }
 .form {
   button, select, .btn {
-    background: #f8f8f8;
+    background-color: #f8f8f8;
     border: 1px solid rgba(0,0,0,0.1);
     margin: 0.25em;
     padding: 0.5em 1em;
@@ -75,7 +78,7 @@ html, body {
       box-shadow: 0 4px 10px rgba(0,0,0,0.25);
     }
     &.selected {
-      background: #ddd;
+      background-color: #ddd;
     }
   }
   .form-element {

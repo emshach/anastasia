@@ -1,4 +1,5 @@
 import store from '@/data'
+import logger from '@/lib/logger'
 
 export function urlsToRegexp( urls ) {
   const rxescape = s =>  s.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
@@ -37,14 +38,14 @@ export function windowDiff( storedWindow, testWindow ) {
         closedCount += urls.length;
       }
     });
-    console.log({ m, found, closed, unknown, foundCount, closedCount });
+    logger.log({ m, found, closed, unknown, foundCount, closedCount });
     return { found, closed, unknown, foundCount, closedCount };
   };
   const rx = testWindow.tabsMatch;
   const open = storedWindow.openUrls.match( rx );
   const all = storedWindow.allUrls.match( rx );
   const tabs = testWindow.tabIds.map( tid => store.state.tabs[ tid ]);
-  console.log({ rx, open, all, tabs });
+  logger.log({ rx, open, all, tabs });
   let d = parseData( open, tabs ),
       allData;
   if ( d.foundCount < testWindow.tabIds.length ) {

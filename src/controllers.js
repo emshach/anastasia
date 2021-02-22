@@ -307,11 +307,11 @@ export const controlPanel = new Controller({
       }
     },
     removeWindow({ windowId }) {
-      const w = store.state.windows[ windowId ];
-      if (!w) return;
-      delete store.openWindows[ windowId ];
-      const tabIds = w.tabIds;
-      const togo = tabIds.concat([ w.id ]);
+      const win = store.state.windows[ windowId ];
+      if ( !win ) return;
+      delete store.openWindows[ win.windowId ];
+      const tabIds = win.tabIds;
+      const togo = tabIds.concat([ win.id ]);
       // console.log({ togo });
       store.clearData( togo );
       tabIds.forEach( tid => {
@@ -319,15 +319,10 @@ export const controlPanel = new Controller({
           delete store.openTabs[ store.state.tabs[ tid ].tabId ];
         delete store.state.tabs[ tid ];
       });
-      if ( !w.closed )
-        b.windows.remove( w.windowId );
-      const wix = store.state.windowIds.indexOf( w.id );
-      if ( wix > -1 ) {
-        store.state.windowIds.splice( wix, 1 );
-        store.setData({ windowIds: store.state.windowIds });
-        store.clearData( w.id );
-      }
-      this.send( 'RemoveWindow', { windowId: w.id });
+      if ( !win.closed )
+        b.windows.remove( win.windowId );
+      store.removeWindow( win )
+      this.send( 'RemoveWindow', { windowId: win.id });
     },
     focusWindow({ windowId }) {
       const w = store.state.windows[ windowId ];
@@ -378,6 +373,13 @@ export const controlPanel = new Controller({
                 b.windows.update( store.panelId, { focused: true });
               } : () => {} );
             this.send( 'FocusWindow', { windowId: w.id });
+          } else {
+            setTimeout(() => {
+              b.windows.get( win.id ).then( win => {
+                if ( win.focused )
+                  this.send( 'FocusWindow', { windowId: w.id });
+              });
+            }, 1000 )
           }
           store.save(w);
         });
@@ -398,6 +400,13 @@ export const controlPanel = new Controller({
                 b.windows.update( store.panelId, { focused: true });
               } : () => {} );
             this.send( 'FocusWindow', { windowId: w.id });
+          } else {
+            setTimeout(() => {
+              b.windows.get( win.id ).then( win => {
+                if ( win.focused )
+                  this.send( 'FocusWindow', { windowId: w.id });
+              });
+            }, 1000 )
           }
           store.save(w);
         });
@@ -453,6 +462,9 @@ export const controlPanel = new Controller({
       t.update( updates );
       store.save(t);
       this.send( 'UpdateTab', { tabId: t.id, tab:t.toJson(), changes: updates });
+    },
+    openOptions() {
+      optionsPage.open()
     }
   }
 });
@@ -497,7 +509,7 @@ export const optionsPage = new Controller({
     return {
       type: 'detached_panel',
       url: 'options.html',
-      width: 800,
+      width: 1024,
       height: window.screen.height,
       allowScriptsToClose: true,
     }
@@ -584,11 +596,11 @@ export const optionsPage = new Controller({
               }
               p.projectIds = []
               p.windowIds = []
-            }
-            if ( p.pid && tx[ p.pid ]) {
-              prj.pid = tx[ p.pid ].id;
-            } else {
-              project0.addProject( prj )
+              if ( p.pid && tx[ p.pid ]) {
+                prj.pid = tx[ p.pid ].id;
+              } else {
+                project0.addProject( prj )
+              }
             }
             updates.push( prj );
             // FIXME: don't like that this process is half outside of import'

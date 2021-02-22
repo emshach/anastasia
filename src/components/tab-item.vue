@@ -1,11 +1,16 @@
 <template lang="pug">
-.tab-item( :class=classes @click=selectTab )
+.tab-item(
+  v-hover-intent='hover'
+  :class='classes'
+  @click='selectTab'
+  @mouseleave='unHover'  
+)
   .inner( v-if='editing' )
     input( v-model='editing.title' )
     .space
     .ctrl-after
       a.btn.edit-btn( href='#' title='submit' @click.stop.prevent='resetTab' )
-        img( src='icons/check.svg' )
+        check-icon
       a.btn.edit-btn( href='#' title='reset' @click.stop.prevent='submitTab' )
         img( src='icons/ff-close.svg' )
   .inner( v-else )
@@ -15,26 +20,28 @@
         a.btn.close-btn( href='#' @click.stop.prevent='closeTab' )
           img( src='icons/ff-close.svg' )
         slot( name='ctrl-before-append' )
-    a( href='#' @click.stop.prevent='focusTab' )
+    a.name( href='#' @click.stop.prevent='focusTab' )
       tab-icon( :icon='tab.icon' )
-      span {{ tab.title || tab.url }}
+      span.title {{ tab.title || tab.url }}
     .space
     slot( name='ctrl-after' )
       .ctrl-after
         slot( name='ctrl-after-prepend' )
         a.btn.edit-btn( href='#' title='add note' @click.stop.prevent='editTab' )
-          img( src='icons/edit.svg' )
+          edit-icon
         slot( name='ctrl-after-append' )
 </template>
 
 <script lang="js">
 import state from '@/control-panel/state'
 import TabIcon from './tab-icon'
+import EditIcon from 'icons/Pencil'
+import CheckIcon from 'icons/Check'
 
 export default {
   name: 'TabItem',
   mixins: [],
-  components: { TabIcon },
+  components: { TabIcon, EditIcon, CheckIcon },
   props: {
     tab: {
       type: Object,
@@ -52,46 +59,61 @@ export default {
       type: Boolean,
       default: false,
     },
+    point: {
+      type: String,
+      default: '',
+    },
+    search: {
+      type: [ RegExp, String ],
+      default: ''
+    },
   },
   data() {
     return {
       editing: false,
-    };
+    }
   },
   created() {
   },
   mounted() {},
   methods: {
+    hover() {
+      this.$emit( 'hover', this.tab.id )
+    },
+    unHover() {
+      this.$emit( 'unhover', this.tab.id )
+    },
     focusTab() {
-      this.$emit( 'ctrl', { op: 'focusTab', tabId: this.tab.id });
+      this.$emit( 'ctrl', { op: 'focusTab', tabId: this.tab.id })
     },
     closeTab() {
-      this.$emit( 'ctrl', { op: 'closeTab', tabId: this.tab.id });
+      this.$emit( 'ctrl', { op: 'closeTab', tabId: this.tab.id })
     },
     editTab() {
       this.editing = {
         title: this.tab.title,
-      };
+      }
     },
     submitTab() {
       this.$emit( 'ctrl', {
         op: 'editTab',
         tabId: this.tab.id,
         updates: this.editing
-      });
-      this.editing = null;
+      })
+      this.editing = null
     },
     resetTab() {
-      this.editing = null;
+      this.editing = null
     },
     selectTab() {
-      console.log( 'selecting tab', this.tab );
-      state.setFocus( this.tab );
+      console.log( 'selecting tab', this.tab )
+      state.setFocus( this.tab )
     },
   },
   computed: {
     classes() {
       return {
+        hovered: this.point === this.tab.id,
         focus: this.focus,
         selected: this.tab.selected,
         opening: this.opening,
@@ -115,18 +137,7 @@ export default {
 .tab-item {
   position: relative;
   box-sizing: border-box;
-  height: 2em;
-  transition-property: height !important;
-  transition-timing-function: linear !important;
-  transition-duration: 500ms;
-  &.opening > .inner {
-    border-top-left-radius: 4px;
-    /* border-top-right-radius: 4px; */
-  }
-  &.closing > .inner {
-    border-bottom-left-radius: 4px;
-    /* border-bottom-right-radius: 4px; */
-  }
+  transition: all 400ms;
   .favicon {
     display: block;
     float: left;
@@ -138,22 +149,23 @@ export default {
     /* transition: 140ms; */
   }
   > .inner {
+    height: 2em;
+    min-height: 2em;
     box-sizing: border-box;
     /* margin-bottom: 1px; */
     position: relative;
     border: 1px solid transparent;
     background: rgba(255,255,255,0.1);
-    height: 100%;
     overflow: hidden;
-    transition-duration: 500ms;
-    > a {
+    transition: all 400ms;
+    a.name {
       display: block;
       padding: 3px 4px;
-      > span {
+      span.title {
         display: block;
         height: 11px;
         overflow: hidden;
-        transition: 400ms;
+        transition: all 400ms;
       }
     }
     .ctrl-before {
@@ -172,17 +184,26 @@ export default {
   &.active {
     > .inner {
       background: rgba(205,225,255,0.2);
-      > a {
+      a.name {
         color: lightcyan;
         /* font-weight: bold; */
         /* text-shadow: 0 0 2px lightskyblue; */
       }
     }
   }
-  &.discarded > .inner > a {
-    color: #aaa;
+  /* &.discarded > .inner > a { */
+  /*   color: #aaa; */
+  /* } */
+  &.discarded {
+    opacity: 0.5;
   }
-  .active &.active, &.focus, &:hover, &.selected {
+  &.closed {
+    > .inner {
+      color: #aaa;
+      background: transparent;
+    }
+  }
+  .active &.active, &.focus, &.hovered, &.selected {
     > .inner {
       /* background: rgba(255,255,255,0.15); */
       color: black;
@@ -194,9 +215,10 @@ export default {
       .space {
         flex: 1;
       }
-      > a {
+      a.name {
         color: black;
-        > span {
+        padding-right: 2.5em;
+        span.title {
           color: black;
           height: auto;
           font-size: 110%;
@@ -216,8 +238,10 @@ export default {
       }
     }
   }
-  &.focus, &:hover, &.selected {
-    height: 8em;
+  &.focus, &.hovered, &.selected {
+    > .inner {
+      min-height: 8em;
+    }
     * {
       color: black;
     }
@@ -227,7 +251,7 @@ export default {
     }
   }
   &.selected, &.selected >.inner {
-    height: 20em;
+    min-height: 20em;
   }
 }
 </style>
