@@ -620,13 +620,14 @@ export class Rule extends Model {
   }
 }
 Object.assign( Rule, {
-  modelName: 'note',
-  fields: [ 'match', 'time', 'onlytab', 'action' ],
+  modelName: 'rule',
+  fields: [ 'match', 'time', 'onlytab', 'popup', 'action' ],
   autoId: RuleId,
   default: {
     match: '',
     time: 0,
     onlytab: false,
+    popup: false,
     action: 'forget',
   },
   async normalize( rule ) {

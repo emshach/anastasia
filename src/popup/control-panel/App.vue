@@ -1,6 +1,11 @@
 <template lang="pug">
   #app
-    k-header( :search='searchTerm' @menu='openSidebar' @search='search' )
+    k-header(
+      :title='extName'
+      :search='searchTerm' 
+      @menu='openSidebar'
+      @search='search'
+    )
     tab-project( 
       v-for='p in topProjects' 
       :project='p'
@@ -31,6 +36,7 @@ export default {
   props: {},
   data() {
     return {
+      extName: browser.runtime.getManifest().name,
       projects: {},
       projectIds: [],
       windows: {},
@@ -50,9 +56,9 @@ export default {
     }
   },
   created() {
-    document.title = 'TabControl Panel'
+    document.title = 'Control Panel'
     const b = browser
-    const port = b.runtime.connect({ name: 'tabcontrol-control-panel' })
+    const port = b.runtime.connect({ name: 'anastasia-control-panel' })
     this.port = port
     port.onMessage.addListener( m => {
       console.log( 'background => control-panel', m )

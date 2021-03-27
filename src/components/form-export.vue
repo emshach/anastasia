@@ -29,7 +29,7 @@ export default {
   methods: {
     doExport() {
       browser.storage.local.get( null ).then( data => {
-        this.filename = ( 'tabcontrol.data.'
+        this.filename = ( 'unibrowse.data.'
                           + ( new Date().toISOString()
                               .replace(  /[^T\d]+/g, '' )
                               .replace( 'T', '_' )) + '.json' )

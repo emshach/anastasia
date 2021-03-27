@@ -29,7 +29,7 @@ export default {
   },
   mounted() {
     const b = browser;
-    this.port = b.runtime.connect({ name: 'tabcontrol-close-prompt' });
+    this.port = b.runtime.connect({ name: 'anastasia-close-prompt' });
     this.port.onMessage.addListener( m => {
       console.log( 'background => close-prompt', m );
       const e = `on${m.op}`;

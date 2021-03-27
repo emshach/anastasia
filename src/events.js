@@ -108,7 +108,7 @@ export async function onWindowFocused( winId ) {
 
 export async function onTabActivated({ previousTabId, tabId, windowId }) {
   await ready();
-  // console.log({ previousTabId, tabId, windowId });
+  // console.log( 'onTabActivated', { previousTabId, tabId, windowId });
   const prev = store.openTabs[ previousTabId ];
   const tab = store.openTabs[ tabId ];
   const w = store.openWindows[ windowId ];
@@ -433,6 +433,7 @@ let _tabsLoaded = false;
 export function ready() {
   if ( _tabsLoaded ) return _tabsLoaded;
   _tabsLoaded = new Promise( r => {
+    store.init();
     let updateDebounce = null;
     const resolve = async () => {
       browser.tabs.onUpdated.removeListener( updateDebounce );

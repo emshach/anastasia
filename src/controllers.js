@@ -2,7 +2,7 @@ import debounce from 'debounce'
 import store from '@/data'
 import state from '@/state'
 import { loadFromImport } from '@/actions'
-import { Project } from '@/models'
+import { Project, Rule } from '@/models'
 
 const b = browser;
 const ports = {};
@@ -12,7 +12,7 @@ export class Controller {
                 onConnect, onDisconnect, onMessage, onReady, onOpen, onClose }) {
     Object.assign( this, {
       name,
-      port_name: `tabcontrol-${ name }`,
+      port_name: `anastasia-${ name }`,
       window,
     });
     if ( onConnect )
@@ -90,6 +90,7 @@ export class Controller {
       if ( w.focused )
         store.state.controlActive = true;
       store.controlIds[ w.id ] = this;
+      this.windowId = w.id
       if (( 'left' in spec ) || ( 'top' in spec )) {
         const pos = {};
         if ( 'left' in spec )
@@ -98,6 +99,7 @@ export class Controller {
           pos.top = spec.top || 0;
         b.windows.update( w.id, pos );
       }
+      this.onOpen();
       this.opening = false;
     }).catch( err => {
       console.warn( 'could not create window!', err );
@@ -131,13 +133,19 @@ export class Controller {
 
   onReady() {}
 
-  onConnect() { return true; }
+  onConnect( port ) {
+    this.windowId = port.sender.tab.windowId;
+    return true;
+  }
 
   onDisconnect() {}
 }
 
 export const controlPanel = new Controller({
   name: 'control-panel',
+  state: {
+    isMainPanel: true,
+  },
   onReady() {
     if ( this.loaddata ) {
       this.send( 'Load', { state: this.loaddata });
@@ -147,6 +155,8 @@ export const controlPanel = new Controller({
     }
   },
   onOpen() {
+    store.panelId = this.windowId
+    store.controlPanelOpen = true;
     store.setData({ controlPanelOpen: true });
   },
   onClose() {
@@ -503,7 +513,7 @@ export const optionsPage = new Controller({
   onReady() {
     // const tabs = store.recentlyClosed.splice(0);
     // // console.log( 'close-prompt tabs', tabs, store.recentlyClosed );
-    // this.send( 'Load', { tabs });
+    this.getRules();
   },
   window() {
     return {
@@ -515,6 +525,38 @@ export const optionsPage = new Controller({
     }
   },
   handlers: {
+    async getRules() {
+      this.send( 'LoadRules', {
+        rules: Object.values( store.state.rules ).map( x => x.toJson() )
+      })
+    },
+    async removeRule({ ruleId, confirmed }) {
+      if ( !confirmed ) {
+        this.send( 'Confirm', {
+          action: 'delete',
+          model: 'Rule',
+          id: ruleId
+        });
+        return;
+      }
+      this.getRules()
+    },
+    async saveRules({ rules }) {
+      for ( const rule of rules ) {
+        if ( !rule.id ) {
+          const obj = await Rule.normalize( rule );
+          store.state.queueModel( obj );
+          continue;
+        }
+        const r = store.state.rules[ rule.id ];
+        if (!r) continue;
+        r.update( rule );  // for now
+        store.state.queueModel(r)
+      }
+      // TODO: maybe some of this goes in store
+      await store.saveAll();
+      this.getRules()
+    },
     async importData({
       projects,
       windows,

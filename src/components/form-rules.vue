@@ -1,104 +1,115 @@
 <template lang="pug">
 .form-rules.form
-  transition-group.rules-list( tag='div' name='fade' mode='out-in')
-    template( v-for='( rule, index ) in rules')
-      .list-item.edit.form-element-form(
-        v-if='index === editingRule'
-        :key='`editing-${index}`'
-      )
-        .form-element
-          label( for='match' ) Match url
-          input( type='text' name='match' v-model='editingData.match' ref='match' )
-        .form-element
-          input( type='checkbox' name='onlytab' v-model='editingData.onlytab' )
-          label( for='onlytab' ) If this is the only tab in the window
-        .form-element
-          input( type='checkbox' name='popup' v-model='editingData.popup' )
-          label( for='popup' ) If this is a popup
-        .form-element
-          label( for='time' ) If tab has been open less than
-          input( type='number' name='time' v-model.number='editingData.time' )
-          | second{{ editingData.time === 1 ? '' : 's' }}
-        .form-element
-          label( for='action' ) then
-          select( name='action' v-model='editingData.action' )
-            option(
-              v-for='( label, action ) in actions'
-              :key='action'
-              :value='action'
-            ) {{ label }}
-        .actions
-          a.btn(
-            href='#'
-            :title=`newRule ? 'Save Rule' : 'Update Rule'`
-            @click.prevent='updateRule'
-          )
-            save-icon( :title=`newRule ? 'Save Rule' : 'Update Rule'` )
-          a.btn(
-            href='#'
-            title='Delete Rule'
-            @click.prevent='deleteRule'
-          )
-            delete-icon( title='Delete Rule' )
-          a.btn(
-            href='#'
-            title='Discard Changes'
-            @click='cancelEdit'
-          )
-            revert-icon( title='Discard Changes' )
-      .list-item.form-element.display( v-else :key='index' )
-        div
-          | On #[span.value closing] a tab, if:
-          ul
-            li( v-if='rule.match' )
-              | url matches #[span.value {{ rule.match }}]
-            li( v-if='rule.onlytab' ) tab is the only tab in the window
-            li( v-if='rule.popup' ) window is a popup
-            li( v-if='rule.time' )
-              | tab has been open less than #[span.value {{ rule.time }}]
-              | second{{ rule.time === 1 ? '' : 's' }}
-          | then
-          |
-          span.value {{ actions[ rule.action ] }}
-        .actions
-          a.btn(
-            href='#'
-            title='Edit Rule'
-            @click.prevent='editRule( index )'
-          )
-            edit-icon
-          a.btn(
-            href='#'
-            title='Delet Rule'
-            @click.prevent='deleteRule( index )'
-          )
-            delete-icon
+  .rules-list
+    .list-item(
+      v-for='( rule, index ) in rules'
+        :key='rule.id || index'
+    )
+      transition( name="fade" mode="out-in" )
+        .edit.form-element-form(
+          v-if='index === editingRule'
+          key='edit'
+        )
+          .form-element
+            label( for='match' ) Match url
+            input(
+              type='text'
+              name='match'
+              v-model='editingData.match'
+              ref='match'
+            )
+          .form-element
+            input( type='checkbox' name='onlytab' v-model='editingData.onlytab' )
+            label( for='onlytab' ) If this is the only tab in the window
+          .form-element
+            input( type='checkbox' name='popup' v-model='editingData.popup' )
+            label( for='popup' ) If this is a popup
+          .form-element
+            label( for='time' ) If tab has been open less than
+            input( type='number' name='time' v-model.number='editingData.time' )
+            | second{{ editingData.time === 1 ? '' : 's' }}
+          .form-element
+            label( for='action' ) then
+            select( name='action' v-model='editingData.action' )
+              option(
+                v-for='( label, action ) in actions'
+                :key='action'
+                :value='action'
+              ) {{ label }}
+          .actions
+            a.btn(
+              href='#'
+              :title=`newRule ? 'Save Rule' : 'Update Rule'`
+              @click.prevent='updateRule'
+            )
+              save-icon( :title=`newRule ? 'Save Rule' : 'Update Rule'` )
+            a.btn(
+              href='#'
+              title='Delete Rule'
+              @click.prevent='deleteRule'
+            )
+              delete-icon( title='Delete Rule' )
+            a.btn(
+              href='#'
+              title='Discard Changes'
+              @click='cancelEdit'
+            )
+              revert-icon( title='Discard Changes' )
+        .display.form-element( v-else key='view' )
+          div
+            | On #[span.value closing] a tab, if:
+            ul
+              li( v-if='rule.match' )
+                | url matches #[span.value {{ rule.match }}]
+              li( v-if='rule.onlytab' ) tab is the only tab in the window
+              li( v-if='rule.popup' ) window is a popup
+              li( v-if='rule.time' )
+                | tab has been open less than #[span.value {{ rule.time }}]
+                | second{{ rule.time === 1 ? '' : 's' }}
+            | then
+            |
+            span.value {{ actions[ rule.action ] }}
+          .actions
+            a.btn(
+              href='#'
+              title='Edit Rule'
+              @click.prevent='editRule( index )'
+            )
+              edit-icon( decoration )
+            a.btn(
+              href='#'
+              title='Delet Rule'
+              @click.prevent='deleteRule( index )'
+            )
+              delete-icon( decoration )
 
-  .btn-group( v-if='editingRule < 0')
+  .btn-group
     button(
       value='add'
       type='button'
       @click='addRule'
     )
-      add-icon
+      add-icon( decoration )
       | Add a new rule
     .space
-    button(
-      v-if='rulesUpdated'
-      value='save'
-      type='button'
-      @click='saveRules'
-    )
-      save-icon
-      | Save changes
-    button(
-      v-if='rulesUpdated'
-      value='revert'
-      type='button'
-      @click='revertRules'
-    )
-      revert-icon
-      | Revert chages
+    transition( name="fade" )
+      button(
+        v-if='rulesUpdated'
+        value='save'
+        type='button'
+        @click='saveRules'
+      )
+        save-icon( decoration )
+        | Save changes
+    transition( name="fade" )
+      button(
+        v-if='rulesUpdated'
+        value='revert'
+        type='button'
+        @click='revertRules'
+      )
+        revert-icon( decoration )
+        | Revert chages
 </template>
 
 <script lang="js">
@@ -141,9 +152,15 @@ export default {
       }
     }
   },
-  created() {},
+  created() {
+    this.setRules( this.value );
+  },
   mounted() {},
   methods: {
+    setRules( rules ) {
+      this.rules = rules.slice()
+      this.numRules = this.rules.length
+    },
     addRule() {
       ++ this.numRules
       const rules = this.rules.length
@@ -161,7 +178,7 @@ export default {
       this.editingData = Object.assign( {}, this.rules[ index ])
       this.editingRule = index
       this.$nextTick(() => {
-        if ( this.$refs.match )
+        if ( this.$refs.match && this.$refs.match[0] )
           this.$refs.match[0].select()
       })
     },
@@ -193,13 +210,19 @@ export default {
       this.newRule = false
     },
     saveRules() {
-      // TODO: send rules to background
+      this.$emit( 'ctrl', { op: 'saveRules', rules: this.rules })
     },
     revertRules() {
-      // TODO: re-retrieve rules from background
+      this.$emit( 'ctrl', { op: 'getRules', rules: this.rules })
     }
   },
-  computed: {}
+  computed: {},
+  watch: {
+    value( rules ) {
+      this.setRules( rules )
+      this.rulesUpdated = false
+    }
+  }
 }
 </script>
 

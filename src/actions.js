@@ -209,7 +209,7 @@ export async function loadFromUI( windows ) {
   return syncWindows( async () => (
     await Promise.all(
       ( windows || await browser.windows.getAll()).map( Window.normalize )))
-                     .filter( w => !store.controlIds[ w.windowId ]));
+                      .filter( w => !store.controlIds[ w.windowId ]), true );
 }
 
 export async function loadFromImport( windows, reopen ) {

@@ -1,5 +1,6 @@
 <template lang="pug">
-.tab-window( :class='classes' )
+.tab-window.empty( v-if='noTabs' )
+.tab-window( v-else :class='classes' )
   .header( :class='{ editing, hovered }' )
     transition( name='fade' mode='out-in' )
       .inner( v-if='editing' key='edit' )
@@ -45,11 +46,11 @@
             )
               img( src='icons/edit.svg' )
             slot( name='ctrl-after-append' )
-  transition-group.body( name='list' tag='div' )
+  .body
     template( v-for='g in tabGroups' )
       tab-group(
         v-if=`g.type === 'group'`
-        :key='g.tabs[0].id'
+        :key=`g.tabs[0].id`
         :gid='`group-${g.tabs[0].id}`'
         :tabIds='g.ids'
         :tabs='g.tabs'
@@ -61,7 +62,7 @@
       )
       closed-tabs(
         v-else-if=`g.type === 'closed'`
-        :key='g.tabs[0].id'
+        :key=`g.tabs[0].id`
         :gid='`group-${g.tabs[0].id}`'
         :tabs='g.tabs'
         :point='point'
@@ -70,9 +71,9 @@
         @hover='passHover'
         @unhover='passUnhover'
       )
-      open-tabs( 
+      open-tabs(
         v-else
-        :key='g.tabs[0].id'
+        :key=`g.tabs[0].id`
         :tabs='g.tabs'
         :point='point'
         :search='search'
@@ -175,7 +176,6 @@ export default {
       })
     },
     tabGroups() {
-      const tabs = this.window.tabs
       const groups = []
       let last = { tabs: [] }
       let lastTab = null
@@ -225,6 +225,11 @@ export default {
         lastTab = t
       })
       return groups
+    },
+    noTabs() {
+      if ( !this.search ) return false
+      return !this.window.tabs.find(
+        t => t.title.match( this.search ) || t.url.match( this.search ))
     },
     classes() {
       return [

@@ -10,15 +10,27 @@
     .space
     .ctrl-after
       a.btn.edit-btn( href='#' title='submit' @click.stop.prevent='resetTab' )
-        check-icon
-      a.btn.edit-btn( href='#' title='reset' @click.stop.prevent='submitTab' )
-        img( src='icons/ff-close.svg' )
+        check-icon.icon( decoration )
+      a.btn.edit-btn( href='#' title='cancel' @click.stop.prevent='submitTab' )
+        close-btn.icon( decoration )
   .inner( v-else )
+
     slot( name='ctrl-before' )
       .ctrl-before
         slot( name='ctrl-before-prepend' )
-        a.btn.close-btn( href='#' @click.stop.prevent='closeTab' )
-          img( src='icons/ff-close.svg' )
+        a.btn.close-btn(
+          href='#'
+          title="delete tab"
+          @click.stop.prevent='removeTab'
+        )
+          delete-icon.icon( decoration )
+        a.btn.close-btn(
+          v-if='!tab.closed'
+          href='#'
+          title="close tab"
+          @click.stop.prevent='closeTab'
+        )
+          close-icon.icon( decoration )
         slot( name='ctrl-before-append' )
     a.name( href='#' @click.stop.prevent='focusTab' )
       tab-icon( :icon='tab.icon' )
@@ -27,21 +39,31 @@
     slot( name='ctrl-after' )
       .ctrl-after
         slot( name='ctrl-after-prepend' )
-        a.btn.edit-btn( href='#' title='add note' @click.stop.prevent='editTab' )
-          edit-icon
+        a.btn.edit-btn( href='#' title='edit' @click.stop.prevent='editTab' )
+          edit-icon.icon( decoration )
         slot( name='ctrl-after-append' )
 </template>
 
 <script lang="js">
 import state from '@/control-panel/state'
 import TabIcon from './tab-icon'
+import CloseIcon from 'icons/Close'
 import EditIcon from 'icons/Pencil'
 import CheckIcon from 'icons/Check'
+import ResetIcon from 'icons/UndoVariant'
+import DeleteIcon from 'icons/Delete'
 
 export default {
   name: 'TabItem',
   mixins: [],
-  components: { TabIcon, EditIcon, CheckIcon },
+  components: {
+    TabIcon,
+    CloseIcon,
+    EditIcon,
+    CheckIcon,
+    ResetIcon,
+    DeleteIcon,
+  },
   props: {
     tab: {
       type: Object,
@@ -109,6 +131,9 @@ export default {
       console.log( 'selecting tab', this.tab )
       state.setFocus( this.tab )
     },
+    removeTab() {
+      this.$emit( 'ctrl', { op: 'removeTab', tabId: this.tab.id })
+    },
   },
   computed: {
     classes() {
@@ -142,8 +167,8 @@ export default {
     display: block;
     float: left;
     margin: -2px 6px 0 -2px;
-    width: 17px;
-    height: 17px;
+    width: 1.7rem;
+    height: 1.7rem;
     color: lightskyblue;
     fill: lightskyblue;
     /* transition: 140ms; */
@@ -163,7 +188,7 @@ export default {
       padding: 3px 4px;
       span.title {
         display: block;
-        height: 11px;
+        height: 1.1rem;
         overflow: hidden;
         transition: all 400ms;
       }
@@ -171,13 +196,16 @@ export default {
     .ctrl-before {
       float: right;
       position: relative;
+      --s-icon: 1.5rem;
+      font-size: var(--s-icon);
+      transition: background 1s, box-shadow 1s;
+      .icon {
+        display: inline-block;
+        opacity: 0;
+        transition: opacity 1s;
+      }
       * {
         position: relative;
-      }
-      .close-btn {
-        right: -20px;
-        padding: 4px;
-        display: block;
       }
     }
   }
@@ -225,12 +253,20 @@ export default {
         }
       }
       .ctrl-before {
+        background: lightskyblue;
+        box-shadow: 0 0 20px lightskyblue,
+                    0 0 20px lightskyblue,
+                    0 0 20px lightskyblue,
+                    0 0 20px lightskyblue,
+                    0 0 20px lightskyblue,
+                    0 0 20px lightskyblue,
+                    0 0 20px lightskyblue, 
+                    0 0 20px lightskyblue;
         position: absolute;
         align-self: end;
         opacity: 1;
-        .close-btn {
-          padding: 1px 4px;
-          right: 0;
+        .icon {
+          opacity: 1;
         }
       }
       .ctrl-after {
@@ -246,8 +282,8 @@ export default {
       color: black;
     }
     .favicon {
-      width: 32px;
-      height: 32px;
+      width: 3.2rem;
+      height: 3.2rem;
     }
   }
   &.selected, &.selected >.inner {

@@ -1,11 +1,12 @@
+@import "./fonts";
 html, body {
   // background: #102923;
+  font-family: 'Yantramanav', sans-serif;
   background: #001810;
   color: lightskyblue;
-  font-family: sans;
   margin: 0;
   padding: 0;
-  font-size: 10px;
+  font-size: 12px;
 }
 .tab-window {
   transition: 140ms;
@@ -25,8 +26,8 @@ a, a:visited, a:active, a:hover {
   display: block;
 }
 .close-btn {
-  width: 16px;
-  height: 16px;
+  width: 1.5rem;
+  height: 1.5rem;
   > img {
     fill: lightskyblue;
   }
@@ -80,4 +81,12 @@ a, a:visited, a:active, a:hover {
   opacity: 0.65;
   padding: 4px;
   box-sizing: border-box;
+}
+.icon {
+  width: var(--w-icon, var(--s-icon));
+  height: var(--h-icon, var(--s-icon));
+  > svg {
+    width: var(--w-icon, var(--s-icon));
+    height: var(--h-icon, var(--s-icon));
+  }
 }

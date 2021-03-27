@@ -22,7 +22,11 @@
       transition( name='fade' mode='out-in' )
         section.options.rules( v-if="active  === 'rules'" v-bar )
           //- header Rules
-          form-rules( @input='updateRules' )
+          form-rules(
+            :value='rules'
+            @input='updateRules'
+            @ctrl='pass'
+          )
         section.options.import( v-else-if="active === 'import'" v-bar )
           //- header Import
           form-import( @input='importData' )
@@ -43,9 +47,14 @@ export default {
     FormImport,
     FormExport
   },
+  props: {
+    rules: {
+      type: Array,
+      default: () => []
+    }
+  },
   data() {
     return {
-      rules: [],
       active: 'rules',
       sections: {
         rules: 'Rules',
@@ -54,15 +63,22 @@ export default {
       }
     }
   },
-  mounted () {
-    browser.runtime.sendMessage({})
-  },
+  mounted () {},
   methods: {
     updateRules( rules ) {
-      this.$emit( 'ctrl', { op: 'updateRules', rules });
+      this.$emit( 'ctrl', { op: 'updateRules', rules })
     },
     importData( data ) {
-      this.$emit( 'ctrl', { op: 'importData', ...data });
+      this.$emit( 'ctrl', { op: 'importData', ...data })
+    },
+    getRules() {
+      this.$emit( 'ctrl', { op: 'getRules' })
+    },
+    onLoadRules({ rules }) {
+      this.rules = Object.values( rules || {})
+    },
+    pass( $event ) {
+      this.$emit( 'ctrl', $event )
     }
   },
   computed: {

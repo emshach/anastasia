@@ -1,5 +1,5 @@
 <template lang="pug">
-  options-page( @ctrl='send' )
+  options-page( :rules='rules' @ctrl='send' )
 </template>
 
 <script>
@@ -17,43 +17,47 @@ export default {
     }
   },
   created() {
-    document.title = 'TabControl Options';
-    const b = browser;
-    const port = b.runtime.connect({ name: 'tabcontrol-options' });
-    this.port = port;
+    const b = browser
+    const port = b.runtime.connect({ name: 'anastasia-options' })
+    const manifest = b.runtime.getManifest()
+    document.title = `${manifest.name} Options`
+    this.port = port
     port.onMessage.addListener( m => {
-      console.log( 'background => options', m );
-      const e = `on${ m.op }`;
-      if ( this[e] ) this[e](m);
-      else console.warn( `'${ m.op }' not yet implemented` );
-    });
+      console.log( 'background => options', m )
+      const e = `on${ m.op }`
+      if ( this[e] ) this[e](m)
+      else console.warn( `'${ m.op }' not yet implemented` )
+    })
     // document.addEventListener( 'keyup', e => {
-    //   console.log( 'onKeyUp', e );
-    // });
+    //   console.log( 'onKeyUp', e )
+    // })
   },
   mounted() {},
   methods: {
     async onLoad({ state }) {
-      this.loading = false;
-      console.log( 'got state', state );
-      Object.assign( this, state );
+      this.loading = false
+      console.log( 'got state', state )
+      Object.assign( this, state )
     },
     onImportSuccess( msg ) {
-      console.log( 'import success', msg );
-      state.importStatus = 'SUCCESS';
+      console.log( 'import success', msg )
+      state.importStatus = 'SUCCESS'
     },
     onImportFailed({ error }) {
-      console.log( 'import failed', error );
-      state.importStatus = 'FAILED';
-      state.importMessage = error;
+      console.log( 'import failed', error )
+      state.importStatus = 'FAILED'
+      state.importMessage = error
+    },
+    onLoadRules({ rules }) {
+      this.rules = rules
     },
     send( msg ) {
       if ( this.port )
-        this.port.postMessage( msg );
+        this.port.postMessage( msg )
     },
   },
   beforeDestroy() {
-    this.port = null;
+    this.port = null
   },
 }
 </script>

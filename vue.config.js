@@ -42,8 +42,13 @@ module.exports = {
         port: 9091
       },
       manifestTransformer: manifest => {
+        manifest.name = manifest.name[ process.env.NODE_ENV || 'development' ]
+        manifest.browser_action.default_title =
+           manifest.browser_action.default_title[
+             process.env.NODE_ENV || 'development'
+           ]
         if (process.env.BROWSER === 'gecko' ) {
-          manifest.background = { page: 'background.html' };
+          manifest.background = { page: 'background.html' }
           manifest.commands = {
             'goto-tab-1': {
               'suggested_key': {
@@ -101,6 +106,7 @@ module.exports = {
             }
           }
         }
+        console.log( manifest )
         return manifest
       }
     }

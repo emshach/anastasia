@@ -23,6 +23,29 @@ export default {
   },
   state,
   toJson: state.toJson.bind( state ),
+  async init() {
+    Object.assign( this, {
+      panelId: null,
+      panelTab: null,
+      promptId: null,
+      promptOpening: false,
+      connected: false,
+      port: null,
+      prompt: null,
+      openWindows: {},
+      openTabs: {},
+      sendUpdates: false,
+      controlIds: {},
+      controlTabIds: {},
+      recentlyClosed: [],
+      loaded: false,
+      controlPanel: null,
+      expecting: {
+        tab: {},
+        window: {},
+      },
+    })
+  },
   async getData( keys ) {
     return browser.storage.local.get( keys )
   },
@@ -41,6 +64,7 @@ export default {
       windowIds,
       iconIds,
       tabIds,
+      ruleIds,
       // tagIds: [],
       // noteIds: [],
     } = await this.getData([
@@ -51,6 +75,7 @@ export default {
       'windowIds',
       'iconIds',
       'tabIds',
+      'ruleIds',
     ]);
     if ( controlPanelOpen !== true && controlPanelOpen !== false )
       controlPanelOpen = false;
@@ -64,6 +89,8 @@ export default {
       iconIds = this.state.iconIds || [];
     if ( !tabIds )
       tabIds = this.state.tabIds || [];
+    if ( !ruleIds )
+      ruleIds = this.state.ruleIds || [];
     if ( !activeWindow )
       activeWindow = this.state.activeWindow || null;
     if ( !projectIds.length ) {
@@ -79,14 +106,15 @@ export default {
       });
     }
     const loaded   = true;
-    const [ projects, windows, icons, tabs ] = await Promise.all([
+    const [ projects, windows, icons, tabs, rules ] = await Promise.all([
       projectIds ? await this.getData( projectIds ) : {},
       windowIds  ? await this.getData( windowIds )  : {},
       iconIds    ? await this.getData( iconIds )    : {},
       tabIds     ? await this.getData( tabIds )     : {},
+      ruleIds    ? await this.getData( ruleIds )     : {},
     ]);
 
-    console.log( 'loading', { projects, windows, icons, tabs });
+    console.log( 'loading', { projects, windows, icons, tabs, rules });
     projectIds = projectIds.filter( p => {
       const prj = projects[p];
       if ( prj )
@@ -123,6 +151,13 @@ export default {
         delete tabs[t];
     }
 
+    ruleIds = ruleIds.filter( r => {
+      const rule = rules[r];
+      if ( rule )
+        new Rule().load( rules[r], true );
+      return !!rules[r];
+    });
+
     Object.assign( this, {
       loaded,
       controlPanelOpen,
@@ -146,6 +181,11 @@ export default {
     for ( const i of Array( Tab.autoId.value ).keys()) {
       const id = `tab-${ i + 1 }`;
       if ( !tabs[ id ])
+        garbage.push( id );
+    }
+    for ( const i of Array( Rule.autoId.value ).keys()) {
+      const id = `rule-${ i + 1 }`;
+      if ( !rules[ id ])
         garbage.push( id );
     }
     // console.log( 'dumping garbage', garbage );
@@ -220,6 +260,7 @@ export default {
          updates[ thing.id ] =
          thing.toJson ? thing.toJson() : thing;
     }
+    console.log( 'writing:', updates );
     this.setData( updates );
     return data;
   },
@@ -323,5 +364,12 @@ export default {
     // return new Note().load( note, false, true );
     // TODO: this
   },
+  // addRule( rule, win, pos ) {
+  //   console.log( 'addRule', { rule, win, pos });
+  //   rule = Rule.normalize( rule );
+  //   this.save( rule );
+  //   return tab;
+  // },
+  // TODO: this, maybe
   // TODO: more, user-customizable checks
 }

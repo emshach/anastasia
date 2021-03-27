@@ -1,6 +1,10 @@
 {
   "extName": {
-    "message": "TabControl",
+    "message": "UniBrowse",
+    "description": ""
+  },
+  "devExtName": {
+    "message": "Project Anastasia",
     "description": ""
   }
 }

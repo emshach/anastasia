@@ -3,8 +3,7 @@
   .inner
     a.btn( v-hover-intent='openMenu' @click.prevent='openMenu' )
       menu-icon
-    .title
-      | Project Anastasia
+    .title {{ title }}
     a.btn( v-hover-intent='openSearch' @click.prevent='openSearch' )
       search-icon
     input.search( ref='search' @input='searchInput' )
@@ -19,6 +18,10 @@ export default {
   mixins: [],
   components: { MenuIcon, SearchIcon },
   props: {
+    title: {
+      type: String,
+      required: true
+    },
     search: {
       type: [ Boolean, String ],
       default: false
@@ -87,6 +90,7 @@ export default {
     .title {
       white-space: nowrap;
       flex: 1;
+      line-height: 1;
     }
     .search {
       width: calc( 50% - 1.5em );
