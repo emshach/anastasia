@@ -1,9 +1,82 @@
 import store from '@/data'
+import logger from '@/lib/logger'
 import { controlPanel as cp } from '@/controllers'
 import { windowDiff } from '@/util'
 import { Window, Tab } from '@/models'
 
-export function updateWindow( storedWindow, testWindow, diff, open ) {
+let loadedTimer = null;
+// let reject = new Promise(( r, j ) => j() );
+let _tabsLoaded = false;
+export function ready() {
+  if ( _tabsLoaded ) return _tabsLoaded;
+  _tabsLoaded = new Promise( r => {
+    store.init();
+    let updateDebounce = null;
+    const resolve = async () => {
+      browser.tabs.onUpdated.removeListener( updateDebounce );
+      await store.loadFromStorage();
+      if ( store.controlPanelOpen ) {
+        cp.open();
+      }
+      await loadFromUI();
+      r();
+    };
+    updateDebounce = () => {
+      if ( loadedTimer != null ) {
+        clearTimeout( loadedTimer );
+        loadedTimer = setTimeout( resolve, 1000 );
+      }
+    };
+    loadedTimer = setTimeout( resolve, 1000 );
+    browser.tabs.onUpdated.addListener( updateDebounce );
+  });
+  return _tabsLoaded;
+}
+
+export async function focusWindow( winId, delayed ) {
+  logger.log( 'focusWindow', winId );
+  if ( winId < 0 ) return;
+  await ready();
+  if ( winId === cp.windowId ) {
+    store.state.controlActive = true;
+    cp.send( 'FocusControl', {});
+    return;
+  }
+  const w = store.openWindows[ winId ];
+  if ( !w ) {
+    cp.send( 'BlurControl', {});
+    return;
+  }
+  const windowId = w.id;
+  if ( store.state.activeWindow ) {
+    const prev = store.state.activeWindow;
+    prev.focused = false;
+    w.focused = true;
+    store.saveAll([ prev,  w ]);
+  } else {
+    const focused = {};
+    Object.values( store.state.windows ).forEach( w => {
+      if ( w.focused ) {
+        w.focused = false;
+        focused[ w.id ] = w;
+      }
+    });
+    focused[ w.id ] = w;
+    w.focused = true;
+    store.saveAll( Object.values( focused ));
+  }
+  store.state.activeWindow = w;
+  store.state.controlActive = false;
+  if ( delayed ) {
+    setTimeout(() => {
+      cp.send( 'FocusWindow', { windowId });
+    }, 200 )                    // FIXME: ugh, but it works
+  } else {
+    cp.send( 'FocusWindow', { windowId });
+  }
+}
+
+export async function updateWindow( storedWindow, testWindow, diff, open ) {
   const win = storedWindow;
   const test = testWindow;
   let resume = false;
@@ -11,11 +84,12 @@ export function updateWindow( storedWindow, testWindow, diff, open ) {
     win.windowId = test.windowId;
     // post({ op: 'SetWindowId', wid, windowId });
   }
-  if ( open && !testWindow.closed ) {
-    if ( testWindow.windowId ) {
-      store.openWindows[ win.windowId ] = win;
+  if ( !testWindow.closed ) {
+    if ( testWindow.windowId ) { // TODO: && windows.get(id)
+      store.openWindows[ testWindow.windowId ] = win;
+    } else if ( open ) {
+      resume = true;
     }
-    resume = true;
   }
   diff.forEach( op => {
     let tab, tabId, after, insert, pos;
@@ -67,8 +141,11 @@ export function updateWindow( storedWindow, testWindow, diff, open ) {
   const wid = test.id;
   store.state.remove( test );
   store.clearData([ wid ]);
-  if ( resume && win.closed )
+  if ( resume && win.closed ) {
     cp.resumeWindow({ windowId: win.id });
+  } else if ( test.focused ) {
+    focusWindow( win.windowId, true )
+  }
 }
 
 export async function addWindow( win ) {
@@ -85,7 +162,7 @@ export async function addWindow( win ) {
 }
 
 export async function syncWindows( ws, reopen ) {
-  console.log( 'syncWindows', ws );
+  console.log( 'syncWindows', { ws, reopen });
   const closeEnough = ( tabs, diffs ) => ( tabs / diffs > 3 );
   // get stored urls
   const storedWindows = store.state.windowIds.reduce(( lists, wid ) => {
@@ -106,7 +183,9 @@ export async function syncWindows( ws, reopen ) {
       tabs: w.tabIds.map( tid => ({
         tid,
         url: ( store.state.tabs[ tid ]
-               && store.state.tabs[ tid ].url )
+               && store.state.tabs[ tid ].url ),
+        active: ( store.state.tabs[ tid ]
+                  && store.state.tabs[ tid ].active )
       })),
       openUrls,
       allUrls,
@@ -115,7 +194,7 @@ export async function syncWindows( ws, reopen ) {
   }, [ [], [] ]).flat();
 
   const windows = await ws();
-  console.log({ windows });
+  console.log({ windows, storedWindows });
   const remainKeys = {};
   const unmatchedKeys = {};
   const matches = [];
@@ -160,7 +239,7 @@ export async function syncWindows( ws, reopen ) {
   const nearMatches = [];
   scores = scores.sort();
   for ( const score of scores ) {
-    if (!unmatchedCount || !remainCount )
+    if ( !unmatchedCount || !remainCount )
       break;
     const options = pairs[ score ];
     for ( const { pair:{ storedWindow, testWindow }, diff } of options ) {
@@ -179,26 +258,53 @@ export async function syncWindows( ws, reopen ) {
   }
   unmatched = unmatched.filter( x => unmatchedKeys[ x.id ]);
   remaining = remaining.filter( x => remainKeys[ x.wid ]);
-  console.log({ matches, nearMatches, unmatched, scores, pairs });
-  for ( const { pair: { storedWindow, testWindow }, diff } of matches)
+  console.log({
+    matches,
+    nearMatches,
+    unmatched,
+    remaining,
+    scores,
+    pairs,
+    reopen
+  });
+  for ( const { pair: { storedWindow, testWindow }, diff } of matches )
     updateWindow( storedWindow, testWindow, diff, reopen );
-  for ( const { storedWindow, testWindow, diff } of nearMatches)
+  for ( const { storedWindow, testWindow, diff } of nearMatches )
     updateWindow( storedWindow, testWindow, diff, reopen );
-  unmatched.forEach( reopen ? w => {
-    if ( w.closed ) {
-      addWindow(w);
-      w.close();
-    } else {
-      addWindow(w).then(({ id }) => {
-        cp.resumeWindow({ windowId: id });
-      });
-    }
-  } : addWindow );
-  if ( !ws ) {
+  // unmatched.forEach( reopen ? w => {
+  //   if ( w.closed ) {
+  //     addWindow(w);
+  //     w.close();
+  //   } else {
+  //     addWindow(w).then(({ id }) => {
+  //       cp.resumeWindow({ windowId: id });
+  //     });
+  //   }
+  // } : addWindow );
+  unmatched.forEach( addWindow );
+  remaining = ( await Promise.all(
+    remaining.map(
+      r => r.w.windowId
+         ? browser.windows.get( r.w.windowId )
+         .then( x =>  null)
+         .catch( x => r )
+         : r
+    )
+  )).filter( x => x );
+  console.log({ remaining });
+  if ( remaining.length ) {
     const updates = {};
-    remaining.forEach( win => {
-      win.w.close();
-      updates[ win.id ] = win.w;
+    remaining.forEach( reopen ? r => {
+      const focusTab = r.tabs.find( t => t.active )
+      cp.resumeWindow({
+        windowId: r.wid,
+        tabId: focusTab && focusTab.tid,
+        focus: !!focusTab
+      });
+      updates[ r.wid ] = r.w;
+    } : r => {
+      r.w.close();
+      updates[ r.id ] = r.w;
     });
     store.saveAll( Object.values( updates ));
   } else
@@ -206,10 +312,18 @@ export async function syncWindows( ws, reopen ) {
 }
 
 export async function loadFromUI( windows ) {
-  return syncWindows( async () => (
-    await Promise.all(
-      ( windows || await browser.windows.getAll()).map( Window.normalize )))
-                      .filter( w => !store.controlIds[ w.windowId ]), true );
+  return windows ? syncWindows( async () =>
+    ( await Promise.all( windows.map( Window.normalize )))
+       .filter( w => !store.controlIds[ w.windowId ]),
+    false
+  ) : syncWindows(
+    async () => (
+      ( await Promise.all(
+        ( await browser.windows.getAll() ).map( Window.normalize )))
+         .filter( w => !store.controlIds[ w.windowId ])
+    ),
+    true
+  );
 }
 
 export async function loadFromImport( windows, reopen ) {
@@ -222,4 +336,5 @@ export default {
   syncWindows,
   loadFromUI,
   loadFromImport,
+  ready,
 }

@@ -308,8 +308,21 @@ export class Window extends Model {
 Object.assign( Window, {
   modelName: 'window',
   autoId: WindowId,
-  fields: [ 'pid', 'title', 'windowId', 'collapsed', 'focused', 'state', 'type',
-            'closed', 'tabIds' ],
+  fields: [
+    'pid',
+    'title',
+    'windowId',
+    'collapsed',
+    'focused',
+    'state',
+    'type',
+    'closed',
+    'tabIds',
+    'top',
+    'left',
+    'width',
+    'height',
+  ],
   attrs: [ 'windowId' ],
   defaults: {
     window_type: 'normal',
@@ -460,10 +473,11 @@ export class Tab extends Model {
   }
 
   update( updates ) {
-    const { icon, favIconUrl, mutedInfo, ...data } = updates;
+    const { id, icon, favIconUrl, mutedInfo, ...data } = updates;
     if ( icon ) this.icon = icon;
     if ( favIconUrl ) this.favIconUrl = favIconUrl;
     if ( mutedInfo ) this.mutedInfo = mutedInfo;
+    if ( id ) this.tabId = id;
 
     return super.update( data );
   }

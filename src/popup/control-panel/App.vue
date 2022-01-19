@@ -2,12 +2,12 @@
   #app
     k-header(
       :title='extName'
-      :search='searchTerm' 
+      :search='searchTerm'
       @menu='openSidebar'
       @search='search'
     )
-    tab-project( 
-      v-for='p in topProjects' 
+    tab-project(
+      v-for='p in topProjects'
       :project='p'
       :key='p.id'
       :point='point'
@@ -306,7 +306,11 @@ export default {
 }
 </script>
 <style lang="scss">
+body, html {
+  overflow-x:  hidden;
+}
 #app {
+  position: relative;
   overflow-x: hidden;
   padding-top: 4em;
   .overlay {

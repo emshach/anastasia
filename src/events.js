@@ -1,26 +1,32 @@
 import store from '@/data'
 import { controlPanel as cp, closePrompt } from '@/controllers'
-import { loadFromUI } from '@/actions'
+import { loadFromUI, focusWindow, ready as actionReady } from '@/actions'
 import { findOpenPos } from '@/util'
 import logger from '@/lib/logger'
+import { Window } from '@/models'
 
 const TAB_UPDATE_DELAY = 500;
 
 export const pendingWindows = {};
+export const ready = actionReady;
 
-function internWindow( win ) {
-  delete pendingWindows[ win.id ];
-  if ( store.controlIds[ win.id ])
+async function internWindow( windowId ) {
+  delete pendingWindows[ windowId ];
+  if ( store.controlIds[ windowId ])
     return;
-  if ( store.openWindows[ win.id ]) return
-  loadFromUI([ win ]);
-  const w = !store.controlIds[ win.id ] && store.openWindows[ win.id ];
+  if ( store.openWindows[ windowId ]) return
+  let win = await browser.windows.get( windowId )
+  logger.log( 'internWindow', win );
+  await loadFromUI([ await Window.normalize( win )]);
+  const w = !store.controlIds[ windowId ] && store.openWindows[ windowId ];
   if ( !w ) return;
   win = store.save(w)
   cp.send( 'AddWindow', { win });
 }
 
 async function _debounceTabWindow({ tabId, tab, windowId }) {
+  await new Promise( r => setTimeout( r, 500 ));
+  logger.log( 'debounce', { tabId, tab, windowId })
   if ( !windowId ) {
     if ( !tab ) {
       if ( !tabId ) return;
@@ -31,25 +37,26 @@ async function _debounceTabWindow({ tabId, tab, windowId }) {
     windowId = tab.windowId;
   }
   if ( !pendingWindows[ windowId ]) return;
-  const { timer, win } = pendingWindows[ windowId ];
+  const { timer } = pendingWindows[ windowId ];
+  logger.log({ timer, windowId });
   clearTimeout( timer );
   pendingWindows[ windowId ] = {
-    timer: setTimeout(() => internWindow( win ), 1000 ),
-    win
+    timer: setTimeout(() => internWindow( windowId ), 1500 ),
   };
 }
+
 export async function onWindowCreated( win ) {
-  // console.log( 'onWindowCreated', win );
-  if ( store.controlIds[ win.id ])
+  logger.log( 'onWindowCreated', { win, windowId: win.id });
+  const windowId = win.id;
+  if ( store.controlIds[ windowId ])
     return;
   await ready();
-  if ( store.controlIds[ win.id ])
+  if ( store.controlIds[ windowId ])
     return;
-  if ( pendingWindows[ win.id ])
-    clearTimeout( pendingWindows[ win.id ].win )
-  pendingWindows[ win.id ] = {
-    timer: setTimeout(() => internWindow( win ), 1000 ),
-    win
+  if ( pendingWindows[ windowId ])
+    clearTimeout( pendingWindows[ windowId ].timer )
+  pendingWindows[ windowId ] = {
+    timer: setTimeout(() => internWindow( windowId ), 1000 ),
   };
 }
 
@@ -69,46 +76,14 @@ export function onWindowRemoved( winId ) {
   cp.send( 'SuspendWindow', { windowId });
 }
 
-export async function onWindowFocused( winId ) {
-  // console.log( 'onWindowFocused', winId );
-  if ( winId < 0 ) return;
-  await ready();
-  if ( winId === cp.windowId ) {
-    store.state.controlActive = true;
-    cp.send( 'FocusControl', {});
-    return;
-  }
-  const w = store.openWindows[ winId ];
-  if ( !w ) {
-    cp.send( 'BlurControl', {});
-    return;
-  }
-  const windowId = w.id;
-  if ( store.state.activeWindow ) {
-    const prev = store.state.activeWindow;
-    prev.focused = false;
-    w.focused = true;
-    store.saveAll([ prev,  w ]);
-  } else {
-    const focused = {};
-    Object.values( store.state.windows ).forEach( w => {
-      if ( w.focused ) {
-        w.focused = false;
-        focused[ w.id ] = w;
-      }
-    });
-    focused[ w.id ] = w;
-    w.focused = true;
-    store.saveAll( Object.values( focused ));
-  }
-  store.state.activeWindow = w;
-  store.state.controlActive = false;
-  cp.send( 'FocusWindow', { windowId });
+export async function onWindowFocused( windowId ) {
+  logger.log( 'onWindowFocused', windowId );
+  focusWindow( windowId );
 }
 
 export async function onTabActivated({ previousTabId, tabId, windowId }) {
   await ready();
-  // console.log( 'onTabActivated', { previousTabId, tabId, windowId });
+  logger.log( 'onTabActivated', { previousTabId, tabId, windowId });
   const prev = store.openTabs[ previousTabId ];
   const tab = store.openTabs[ tabId ];
   const w = store.openWindows[ windowId ];
@@ -163,7 +138,7 @@ export async function onTabCreated( tab ) {
   logger.log( 'onTabCreated', tab );
   const tabId = tab.id;
   if ( store.controlTabIds[ tabId ]) {
-    // console.log( 'control panel tab, ignoring' );
+    // logger.log( 'control panel tab, ignoring' );
     return;
   }
   await ready();
@@ -424,36 +399,6 @@ export function onCommand( command ) {
     });
     break;
   }
-}
-
-let loadedTimer = null;
-// let reject = new Promise(( r, j ) => j() );
-
-let _tabsLoaded = false;
-export function ready() {
-  if ( _tabsLoaded ) return _tabsLoaded;
-  _tabsLoaded = new Promise( r => {
-    store.init();
-    let updateDebounce = null;
-    const resolve = async () => {
-      browser.tabs.onUpdated.removeListener( updateDebounce );
-      await store.loadFromStorage();
-      if ( store.controlPanelOpen ) {
-        cp.open();
-      }
-      await loadFromUI();
-      r();
-    };
-    updateDebounce = () => {
-      if ( loadedTimer != null ) {
-        clearTimeout( loadedTimer );
-        loadedTimer = setTimeout( resolve, 1000 );
-      }
-    };
-    loadedTimer = setTimeout( resolve, 1000 );
-    browser.tabs.onUpdated.addListener( updateDebounce );
-  });
-  return _tabsLoaded;
 }
 
 export default {

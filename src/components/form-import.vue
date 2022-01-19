@@ -23,7 +23,8 @@
       label
         input( type='checkbox' v-model='importObjects.orphaned' )
         | Import orphaned tabs as notes
-      object-manager( :value='importObjects', @input='updateObjects' )
+      //- object-manager( :value='importObjects', @input='updateObjects' )
+      import-viewer( :value='importObjects' )
       button( value='import' @click='submit' ) Import
 
     .form-element( v-else-if='importData')
@@ -44,12 +45,13 @@ import debounce from 'debounce'
 // import VueJsonEditor from 'vue-json-editor'
 import VJsonEditor from 'v-jsoneditor'
 import state from '@/options/state'
-import ObjectManager from './object-manager'
+// import ObjectManager from './object-manager'
+import ImportViewer from './import-viewer'
 
 export default {
   name: 'form-import',
   mixins: [],
-  components: { VJsonEditor, ObjectManager },
+  components: { VJsonEditor, ImportViewer },
   props: {},
   data() {
     return {
@@ -203,60 +205,92 @@ export default {
         sync: true,
         orphaned: false,
       }
-      const { projects, windows, icons, tabs, notes, urlTabs } = out;
-      for ( const k of Object.keys( data )) {
-        if ( k.startsWith( 'project-' )) {
-          projects.push( data[k] )
-        } else if ( k.startsWith( 'window-' )) {
-          windows.push( data[k] )
-        } else if ( k.startsWith( 'tab-' )) {
-          tabs.push( data[k] )
-          if ( !urlTabs[ data[k].url ]) {
-            urlTabs[ data[k].url ] = []
-          }
-          urlTabs[ data[k].url ].push( data[k] );
-        } else if ( k.startsWith( 'icon-' )) {
-          icons[k] = data[k]
-        } else if ( k.startsWith( 'note-' )) {
-          notes.push( data[k] )
-        } else {
-          // TODO: ignore for now
+      // const { projects, windows, icons, tabs, notes, urlTabs } = out;
+      let pid = 1
+      const pids = {}
+      if (out.projects) {
+        for ( const p of out.projects ) {
+          pids[ p.id ] = true
         }
       }
-      for ( const p of projects ) {
-        p.projects = p.projectIds.map( id => {
-          const p2 = data[ id ];
-          if ( p2 ) {
-            p2.parent = p2.project = p;
-          }
-          return p2;
-        });
-        p.windows = p.windowIds.map( id => {
-          const w = data[ id ];
-          if (w) {
-            w.parent = w.project = p;
-          }
-          return w;
-        });
+      while ( `project-${pid}` in pids ) pid++
+      pid = `project-${pid}`
+      const project = {
+        id: pid,
+        name: 'Untitled',
+        projectIds: [],
+        windowIds: [],
+        noteIds: [],
       }
-      const windowIds = {}
-      for ( const w of windows ) {
-        windowIds[ w.id ] = true;
-        w.tabs = w.tabIds.map( id => {
-          const t = data[ id ];
-          if (t) {
-            t.parent = t.window = w;
-          }
-          return t;
-        });
-      }
-      for ( const t of tabs ) {
-        if ( !windowIds[ t.wid ]) {
-          t.wid = `closed ${t.wid}`
-          t.orphaned = true
+      for ( const w of data.windows ) {
+        if ( !w.pid ) {
+          project.windowIds.push( w.id )
+          w.pid = pid
         }
       }
+      for ( const n of data.notes ) {
+        if ( !n.pid ) {
+          project.noteIds.push( n.id )
+          n.pid = pid
+        }
+      }
+      // for ( const k of Object.keys( data )) {
+      //   if ( k.startsWith( 'project-' )) {
+      //     projects.push( data[k] )
+      //   } else if ( k.startsWith( 'window-' )) {
+      //     windows.push( data[k] )
+      //   } else if ( k.startsWith( 'tab-' )) {
+      //     tabs.push( data[k] )
+      //     if ( !urlTabs[ data[k].url ]) {
+      //       urlTabs[ data[k].url ] = []
+      //     }
+      //     urlTabs[ data[k].url ].push( data[k] );
+      //   } else if ( k.startsWith( 'icon-' )) {
+      //     icons[k] = data[k]
+      //   } else if ( k.startsWith( 'note-' )) {
+      //     notes.push( data[k] )
+      //   } else {
+      //     // TODO: ignore for now
+      //   }
+      // }
+      // for ( const p of projects ) {
+      //   p.projects = p.projectIds.map( id => {
+      //     const p2 = data[ id ];
+      //     if ( p2 ) {
+      //       p2.parent = p2.project = p;
+      //     }
+      //     return p2;
+      //   });
+      //   p.windows = p.windowIds.map( id => {
+      //     const w = data[ id ];
+      //     if (w) {
+      //       w.parent = w.project = p;
+      //     }
+      //     return w;
+      //   });
+      // }
+      // const windowIds = {}
+      // for ( const w of windows ) {
+      //   windowIds[ w.id ] = true;
+      //   w.tabs = w.tabIds.map( id => {
+      //     const t = data[ id ];
+      //     if (t) {
+      //       t.parent = t.window = w;
+      //     }
+      //     return t;
+      //   });
+      // }
+      // for ( const t of tabs ) {
+      //   if ( !windowIds[ t.wid ]) {
+      //     t.wid = `closed:${t.wid}`
+      //     t.orphaned = true
+      //   }
+      // }
       // TODO: notes
+      Object.assign( out, data )
+      if ( project.windowIds.length || project.projectIds.length ) {
+        out.projects.push( project )
+      }
       console.log( 'processed data', data, out );
       this.importObjects = out;
     },

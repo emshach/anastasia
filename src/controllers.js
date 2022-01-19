@@ -190,6 +190,7 @@ export const controlPanel = new Controller({
       } else {
         tab.update( tab, {
           closed: true,
+          index: null,
           active: false,
           tabId: null,
           windowId: null
@@ -239,31 +240,35 @@ export const controlPanel = new Controller({
         return;
       }
       // get tab position
-      let pos = 0;
       tab.windowId = w.windowId;
-      if ( tab.opener ) {
-        tab.openerTabId = tab.opener.tabId;
-        pos = tab.opener.index + 1;
-      } else {
+      if ( tab.index === null || tab.index === undefined ) {
+        let pos = 0;
+        // if ( tab.opener ) {
+        //   tab.openerTabId = tab.opener.tabId;
+        //   pos = tab.opener.index + 1;
+        // } else {
         w.tabIds.find( t => {
           if ( !tabs[t].closed ) ++pos;
           return t === tabId;
         });
+        // }
+        tab.index = pos;
       }
-      tab.index = pos;
       const t = {};
-      [ 'active', 'cookieStoreId', 'discarded', 'index',
+      [ 'active', // 'cookieStoreId',  // leave for now
+        'discarded', 'index',
         // 'openerTabId',            // leave for now
         'pinned', 'title', 'url', 'windowId' ].forEach( k => {
-          if ( tab[k] !== '' && tab[k] != null )
+          if ( tab[k] !== '' && tab[k] !== null )
             t[k] = tab[k];
         });
       if ( t.title && !t.discarded )
         delete t.title;
       if ( /about:/.test( t.url ))
-        return;                   // TODO: for now, just don't
+        return;       // TODO: extension page to click link. for now, just don't
+      console.log( 'creating tab', t );
       b.tabs.create(t).then( t => {
-        this.attachTab({ tid: tab.id, tabId: t.id });
+        this.attachTab({ tid: tab.id, tabId: t.id, tab: t });
         if ( focus ) {
           b.tabs.update( t.id, { active: true });
           b.windows.update( w.windowId, { focused: true }).then(
@@ -274,16 +279,16 @@ export const controlPanel = new Controller({
       });
       this.send( 'ResumeTab', { tabId });
     },
-    attachTab({ tid, tabId }) {
-      const tab = store.state.tabs[ tid ];
+    attachTab({ tid, tabId, tab }) {
+      const storedTab = store.state.tabs[ tid ];
       const winTab = store.openTabs[ tabId ];
-      // console.log( 'attachTab', { winTab, tab });
+      console.log( 'attachTab', { winTab, tab });
       if ( winTab ) {
-        if ( winTab.id === tab.id )
+        if ( winTab.id === storedTab.id )
           return;
-        if ( winTab.wid !== tab.wid )
+        if ( winTab.wid !== storedTab.wid )
           return;                 // TODO: throw?
-        // console.log( 'overwriting', { winTab, tab });
+        // console.log( 'overwriting', { winTab, storedTab, tab });
         const w = store.state.windows[ winTab.wid ];
         // TODO: maybe alias
         const i = w.tabIds.indexOf( tid );
@@ -296,10 +301,13 @@ export const controlPanel = new Controller({
         store.removeTab( winTab );
         this.send( 'RemoveTab', { tabId: winTab.id });
       }
-      store.openTabs[ tabId ] = tab;
+      if ( tab ) {
+        storedTab.update( tab );
+      }
+      store.openTabs[ tabId ] = storedTab;
       tab.tabId = tabId;
       delete tab.closed;
-      store.save( tab );
+      store.save( storedTab );
     },
     async closeWindow({ windowId }) {
       const w = store.state.windows[ windowId ];
@@ -349,78 +357,94 @@ export const controlPanel = new Controller({
       const w = store.state.windows[ windowId ];
       const controlActive = store.state.controlActive;
       // console.log( 0, { controlActive });
-      w.openingTab = tabId;
+      console.log( 'resumeWindow', { windowId, tabId, focus, window: w })
+      // console.trace()
       if (!w) return;
-      const win = {};
 
+      // get tabs
+      const openTabs = [];
+      let tab = null;
+      let index = 0;
+      if ( tabId ) {
+        for ( const tid of w.tabIds ) {
+          const t = store.state.tabs[tid];
+          if (!t) continue;
+          if ( t.id === tabId ) {
+            delete t.closed;
+            console.log( 'found main tab', t, 'at', index );
+            t.active = true;
+            t.index = index++;
+            tab = t;
+          } else if ( !t.closed ) {
+            openTabs.push(t)
+            console.log( 'found open tab', t, 'at', index );
+            t.index = index++;
+          }
+        }
+      } else {
+        for ( const tid of w.tabIds ) {
+          const t = store.state.tabs[tid];
+          if (!t) continue;
+          if ( !t.closed ) {
+            if ( t.active ) {
+              if ( tab ) {
+                openTabs.push(t);
+              } else {
+                tab = t
+              }
+            } else {
+              openTabs.push(t);
+            }
+            console.log( 'found open tab', t, 'at', index );
+            t.index = index++;
+          }
+        }
+      }
+      if ( !tab ) tab = openTabs.pop()
+      if ( !tab ) {
+        console.error( "couldn't find a tab anywhere!" )
+        return
+      }
+      tab.discarded = false;
+      openTabs.forEach( t => { t.active = false })
+      // TODO: if !tab?
+      // TODO: we need to be able to make and attach  a blank tab
+      w.openingTab = tab.id;
+
+      // setup window
+      const win = {};
       [ 'allowScriptsToClose', 'cookieStoreId', 'height',
         'incognito', 'left', 'state', 'tabId', 'titlePreface', 'top',
         'type', 'width' ].forEach( k => {
           if ( w[k] !== '' && w[k] != null )
             win[k] = w[k];
-        });
-      const tab = store.state.tabs[ tabId ];
+        })
       // TODO: don't do things so differently if we have a tab
-      if ( tab ) {
-        win.url = tab.url;
-        const openTabs = [];
-        w.tabIds.forEach( tid => {
-          const t = store.state.tabs[ tid ];
-          if ( !t.closed && t.id !== tab.id ) {
-            t.discarded = true;
-            t.active = false;
-            openTabs.push(t);
-          }
-        });
-        b.windows.create( win ).then( win => {
-          delete w.closed;
-          this.attachWindow({ wid: w.id, windowId: win.id });
-          openTabs.forEach( t => this.resumeTab({ tabId: t.id }));
-          if ( focus ) {
-            // console.log( 1, { controlActive });
-            b.windows.update( win.id, { focused: true }).then(
-              controlActive ? () => {
-                b.windows.update( store.panelId, { focused: true });
-              } : () => {} );
-            this.send( 'FocusWindow', { windowId: w.id });
-          } else {
-            setTimeout(() => {
-              b.windows.get( win.id ).then( win => {
-                if ( win.focused )
-                  this.send( 'FocusWindow', { windowId: w.id });
-              });
-            }, 1000 )
-          }
-          store.save(w);
-        });
-      } else {
-        const openTabs = w.tabIds.map( t => store.state.tabs[t] )
-              .filter( t => !t.closed );
-        win.url = openTabs.map( t => t.url );
-        b.windows.create( win ).then( win => {
-          delete w.closed;
-          this.attachWindow({ wid: w.id, windowId: win.id });
-          win.tabs.forEach(( t, i ) => {
-            this.attachTab({ tid: openTabs[i].id, tabId: t.id });
-          });
-          if ( focus ) {
-            // console.log( 2, { controlActive });
-            b.windows.update( win.id, { focused: true }).then(
-              controlActive ? () => {
-                b.windows.update( store.panelId, { focused: true });
-              } : () => {} );
-            this.send( 'FocusWindow', { windowId: w.id });
-          } else {
-            setTimeout(() => {
-              b.windows.get( win.id ).then( win => {
-                if ( win.focused )
-                  this.send( 'FocusWindow', { windowId: w.id });
-              });
-            }, 1000 )
-          }
-          store.save(w);
-        });
-      }
+      win.url = tab.url;
+      console.log( 'creating window', { win, tab, openTabs });
+      b.windows.create( win ).then( win => {
+        console.log( 'created window', win );
+        this.attachTab({ tid: tab.id, tabId: win.tabs[0].id, tab: win.tabs[0] });
+        delete w.closed;
+        this.attachWindow({ wid: w.id, windowId: win.id });
+        openTabs.forEach( t => this.resumeTab({ tabId: t.id }));
+        if ( focus ) {
+          // console.log( 1, { controlActive });
+          b.windows.update( win.id, { focused: true }).then(
+            controlActive ? () => {
+              b.windows.update( store.panelId, { focused: true });
+            } : () => {} );
+          this.send( 'FocusWindow', { windowId: w.id });
+        } else {
+          setTimeout(() => {
+            b.windows.get( win.id ).then( win => {
+              if ( win.focused )
+                this.send( 'FocusWindow', { windowId: w.id });
+            });
+          }, 1000 )
+        }
+        store.save(w);
+      });
       this.send( 'ResumeWindow', { windowId: w.id });
     },
     attachWindow({ wid, windowId }) {
@@ -586,10 +610,12 @@ export const optionsPage = new Controller({
       // const tabNotes = {};
 
       try {
+        const blend = {}
         for ( const p of projects ) {
           const prj = Project.find( fp => fp.name === p.name );
           if ( prj ) {
             tx[ p.id ] = prj
+            blend[ p.id ] = prj
           } else {
             tx[ p.id ] = store.importProject(p);
           }
@@ -620,14 +646,7 @@ export const optionsPage = new Controller({
           for ( const p of projects ) {
             const prj = tx[ p.id ];
             if ( !prj ) continue;
-            if ( prj === p ) {
-              if ( p.projectIds ) {
-                prj.projectIds = rename( p.projectIds )
-              }
-              if ( p.windowIds ) {
-                prj.windowIds = rename( p.windowIds )
-              }
-            } else {
+            if ( blend[ p.id ]) {
               if ( p.projectIds ) {
                 prj.projectIds =
                    ( prj.projectIds || [] ).concat( rename( p.projectIds ))
@@ -642,6 +661,13 @@ export const optionsPage = new Controller({
                 prj.pid = tx[ p.pid ].id;
               } else {
                 project0.addProject( prj )
+              }
+            } else {
+              if ( p.projectIds ) {
+                prj.projectIds = rename( p.projectIds )
+              }
+              if ( p.windowIds ) {
+                prj.windowIds = rename( p.windowIds )
               }
             }
             updates.push( prj );

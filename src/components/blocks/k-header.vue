@@ -57,7 +57,7 @@ export default {
 
 <style lang="scss">
 .k-header {
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   width: 100vw;
@@ -68,6 +68,8 @@ export default {
   margin-bottom: 0.5em;
   box-sizing: border-box;
   overflow: hidden;
+  z-index: 2;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.25);
   * {
     color: white;
   }
