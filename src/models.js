@@ -97,6 +97,14 @@ export class Model {
     return out;
   }
 
+  toDisplay() {
+    const out = { id: this.id };
+    for ( const f of ( this.displayFields || this.fields )) {
+      out[f] = this[f];
+    }
+    return out;
+  }
+
   update( updates ) {
     Object.assign( this, updates );
     return this;
@@ -105,6 +113,7 @@ export class Model {
 Object.assign( Model, {
   modelName: null,
   fields: [],
+  displayFields: null,
   attrs: [],
   autoId: { next() { return null }},
   defaults: {},
@@ -318,10 +327,20 @@ Object.assign( Window, {
     'type',
     'closed',
     'tabIds',
+    'activeTab',
     'top',
     'left',
     'width',
     'height',
+  ],
+  displayFields: [
+    'title',
+    'collapsed',
+    'state',
+    'type',
+    'closed',
+    'tabIds',
+    'activeTab',
   ],
   attrs: [ 'windowId' ],
   defaults: {
@@ -358,6 +377,9 @@ Object.assign( Window, {
     const urls = [];
     const tabIds = ( await browser.tabs.query({ windowId: win.id })).map( t => {
       const tab = Tab.normalize(t);
+      if ( tab.active ) {
+        out.activeTab = tab.id
+      }
       urls.push( tab.url );
       return tab.id;
     });
@@ -485,12 +507,11 @@ export class Tab extends Model {
 Object.assign( Tab, {
   modelName: 'tab',
   fields: [
-    'id',
     'wid',
     'openerId',
     'active',
     'url',
-    'iconid',
+    'iconId',
     'title',
     'attention',
     'audible',
@@ -501,6 +522,26 @@ Object.assign( Tab, {
     'highlighted',
     'incognito',
     'index',
+    'isArticle',
+    'isInReaderMode',
+    'lastAccessed',
+    'mute',
+    'pinned',
+    'status',
+  ],
+  displayFields: [
+    'openerId',
+    'url',
+    'iconId',
+    'title',
+    'attention',
+    'audible',
+    'discarded',
+    'detached',
+    'closed',
+    'hidden',
+    'highlighted',
+    'incognito',
     'isArticle',
     'isInReaderMode',
     'lastAccessed',
@@ -607,8 +648,17 @@ export class Note extends Model {
 }
 Object.assign( Note, {
   modelName: 'note',
-  fields: [ 'name', 'summary', 'details',
-            'projectIds', 'windowIds', 'tabIds', 'ruleIds', 'noteIds', 'parentIds' ],
+  fields: [
+    'name',
+    'summary',
+    'details',
+    'projectIds',
+    'windowIds',
+    'tabIds',
+    'ruleIds',
+    'noteIds',
+    'parentIds'
+  ],
   autoId: NoteId,
   default: {
     name: 'note',

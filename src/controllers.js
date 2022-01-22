@@ -56,9 +56,12 @@ export class Controller {
     this.onReady();
   }
 
-  send( op, msg ) {
-    console.log( 'sending', { op, msg });
+  send( op, msg, requestId ) {
+    console.log( 'sending', { op, msg, requestId });
     msg.op = op;
+    if ( requestId ) {
+      msg.requestId = requestId
+    }
     if ( this.port && this.ready )
       this.port.postMessage( msg );
   }
@@ -148,7 +151,8 @@ export const controlPanel = new Controller({
   },
   onReady() {
     if ( this.loaddata ) {
-      this.send( 'Load', { state: this.loaddata });
+      // this.send( 'Load', { state: this.loaddata });
+      this.send( 'update', this.loaddata ) // TODO: verify
       delete this.loaddata;
     } else if ( store.loaded ) {
       this.load( store.toJson() )
@@ -177,16 +181,17 @@ export const controlPanel = new Controller({
   handlers: {
     load( state ) {
       if ( this.ready )
-        this.send( 'Load', { state });
+        // this.send( 'Load', { state });
+        this.send( 'update', state )
       else
         this.loaddata = state;
     },
-    closeTab({ tabId }) {
+    suspendTab({ tabId, requestId }) {
       const tab = store.state.tabs[ tabId ];
       if ( tab.tabId && ( tab.tabId in store.openTabs ))
         b.tabs.remove( tab.tabId );
       if ( tab.closed ) {
-        this.removeTab({ tabId });
+        this.removeTab({ tabId, requestId });
       } else {
         tab.update( tab, {
           closed: true,
@@ -196,10 +201,15 @@ export const controlPanel = new Controller({
           windowId: null
         });
         store.save( tab );
-        this.send( 'SuspendTab', { tabId });
+        // this.send( 'SuspendTab', { tabId, requestId });
+        this.send(
+          'update',
+          { tabs: {[ tabId ]: { closed: true }}},
+          requestId
+        );
       }
     },
-    removeTab({ tabId }) {
+    removeTab({ tabId, requestId }) {
       const tab = store.state.tabs[ tabId ];
       if ( !tab ) return;
       const { w, tix } = store.getTabWindow( tab );
@@ -207,21 +217,24 @@ export const controlPanel = new Controller({
         w.tabIds.splice( tix, 1 );
       }
       store.removeTab( tab )
-      this.send( 'RemoveTab', { tabId });
+      // this.send( 'RemoveTab', { tabId });
+      this.send( 'update', { tabs: {[ tabId ]: null }}, requestId )
       if (w) {
         console.log( 'tab removed', w );
-        if ( !w.tabIds.length )
+        if ( !w.tabIds.length ) {
           this.removeWindow({ windowId: w.id });
-        else
+        } else {
+          this.send( 'update', { windows: {[ w.id ]: { tabIds: w.tabIds }}})
           store.save(w);
+        }
       }
     },
-    focusTab({ tabId }) {
+    focusTab({ tabId, requestId }) {
       const tab = store.state.tabs[ tabId ];
       if ( tab ) {
         const w = store.state.windows[ tab.wid ];
         if ( tab.closed || w.closed ) {
-          this.resumeTab({ tabId, focus: true });
+          this.resumeTab({ tabId, focus: true, requestId });
           return;
         }
         b.tabs.update( tab.tabId, { active: true });
@@ -231,12 +244,12 @@ export const controlPanel = new Controller({
           } : () => {} );
       }
     },
-    resumeTab({ tabId, focus }) {
+    resumeTab({ tabId, focus, requestId }) {
       const tabs = store.state.tabs;
       const tab = tabs[ tabId ];
       const w = store.state.windows[ tab.wid ];
       if ( w.closed ) {
-        this.resumeWindow({ windowId: w.id, tabId, focus });
+        this.resumeWindow({ windowId: w.id, tabId, focus, requestId });
         return;
       }
       // get tab position
@@ -277,11 +290,17 @@ export const controlPanel = new Controller({
             } : () => {} );
         }
       });
-      this.send( 'ResumeTab', { tabId });
+      // this.send( 'ResumeTab', { tabId });
+      this.send(
+        'update',
+        { tabs:{[ tabId ]: { closed: false }}},
+        requestId
+      )
     },
-    attachTab({ tid, tabId, tab }) {
+    attachTab({ tid, tabId, tab, requestId }) {
       const storedTab = store.state.tabs[ tid ];
       const winTab = store.openTabs[ tabId ];
+      const updates = { tabs: {}, windows: {} };
       console.log( 'attachTab', { winTab, tab });
       if ( winTab ) {
         if ( winTab.id === storedTab.id )
@@ -296,10 +315,13 @@ export const controlPanel = new Controller({
           if ( w.tabIds && ( !w.tabIds[i] || w.tabIds[i] === winTab.id )) {
             w.tabIds.splice( i, 1 );
           }
+          updates.windoows[ w.id ] = { tabIds: w.tabIds }
           store.save(w);
         }
         store.removeTab( winTab );
-        this.send( 'RemoveTab', { tabId: winTab.id });
+        // this.send( 'RemoveTab', { tabId: winTab.id });
+        updates.tab[ winTab.id ] = null
+        this.send( 'update', updates, requestId )
       }
       if ( tab ) {
         storedTab.update( tab );
@@ -309,10 +331,11 @@ export const controlPanel = new Controller({
       delete tab.closed;
       store.save( storedTab );
     },
-    async closeWindow({ windowId }) {
+    async suspendWindow({ windowId, requestId }) {
       const w = store.state.windows[ windowId ];
       if ( w.closed ) {
-        this.removeWindow({ windowId }); // TODO: ask for confirmation if many tabs
+        this.removeWindow({ windowId, requestId });
+        // TODO: ask for confirmation if many tabs
       } else {
           w.closed = true;
           store.save(w);
@@ -321,10 +344,15 @@ export const controlPanel = new Controller({
         } catch ( error ) {
           console.error( `couldn't close window: ${error}` );
         }
-        this.send( 'SuspendWindow', { windowId });
+        // this.send( 'SuspendWindow', { windowId });
+        this.send(
+          'update',
+          { windows: {[ windowId ]: { closed: true }}},
+          requestId
+        )
       }
     },
-    removeWindow({ windowId }) {
+    removeWindow({ windowId, requestId }) {
       const win = store.state.windows[ windowId ];
       if ( !win ) return;
       delete store.openWindows[ win.windowId ];
@@ -342,10 +370,10 @@ export const controlPanel = new Controller({
       store.removeWindow( win )
       this.send( 'RemoveWindow', { windowId: win.id });
     },
-    focusWindow({ windowId }) {
+    focusWindow({ windowId, requestId }) {
       const w = store.state.windows[ windowId ];
       if ( w.closed ) {
-        this.resumeWindow({ windowId, focus: true });
+        this.resumeWindow({ windowId, focus: true, requestId });
         return;
       }
       b.windows.update( w.windowId, { focused: true }).then(
@@ -353,7 +381,7 @@ export const controlPanel = new Controller({
           b.windows.update( store.panelId, { focused: true });
         } : () => {} );
     },
-    resumeWindow({ windowId, tabId, focus }) {
+    resumeWindow({ windowId, tabId, focus, requestId }) {
       const w = store.state.windows[ windowId ];
       const controlActive = store.state.controlActive;
       // console.log( 0, { controlActive });
@@ -434,20 +462,27 @@ export const controlPanel = new Controller({
             controlActive ? () => {
               b.windows.update( store.panelId, { focused: true });
             } : () => {} );
-          this.send( 'FocusWindow', { windowId: w.id });
+          // this.send( 'FocusWindow', { windowId: w.id });
+          this.send( 'update', { windows: {[ w.id ]: { focused: true }}})
         } else {
           setTimeout(() => {
             b.windows.get( win.id ).then( win => {
               if ( win.focused )
-                this.send( 'FocusWindow', { windowId: w.id });
+                // this.send( 'FocusWindow', { windowId: w.id });
+                this.send( 'focusWindow', w.id )
             });
           }, 1000 )
         }
         store.save(w);
       });
-      this.send( 'ResumeWindow', { windowId: w.id });
+      // this.send( 'ResumeWindow', { windowId: w.id });
+      this.send(
+        'update',
+        { windows: {[ w.id ]: { closed: false }}},
+        requestId
+      )
     },
-    attachWindow({ wid, windowId }) {
+    attachWindow({ wid, windowId, requestId }) {
       const w = store.state.windows[ wid ];
       const win = store.openWindows[ windowId ];
       if ( win ) {
@@ -459,43 +494,55 @@ export const controlPanel = new Controller({
       w.windowId = windowId;
       store.save(w);
     },
-    collapseWindow({ windowId }) {
+    collapseWindow({ windowId, requestId }) {
       const w = store.state.windows[ windowId ];
       w.collapsed = !w.collapsed;
       store.save(w);
-      this.send( 'SetWindowCollapse', {
-        windowId: w.id,
-        collapse:w.collapsed
-      });
+      // this.send( 'SetWindowCollapse', {
+      //   windowId: w.id,
+      //   collapse:w.collapsed
+      // });
+      this.send(
+        'update',
+        { windows: {[ w.id ]: { collapsed: w.collapsed }}},
+        requestId
+      )
     },
     addProject({ project }) {
       project = store.addProject( project );
-      this.send( 'AddProject', { project });
+      // this.send( 'AddProject', { project });
+      this.send( 'update', { projects: {[ project.id ]: project }})
     },
     removeProject({ projectId }) {
       store.removeProject( projectId );
-      this.send( 'RemoveProject', { projectId });
+      // this.send( 'RemoveProject', { projectId });
+      this.send( 'update', { projects: {[ projectId ]: null }})
     },
-    moveProject({ projectId }) {
+    moveProject({ projectId, parentId, pos }) {
+      // TODO: this
     },
-    // createTab({ tabId }) {
+    // createTab({ tabId, requestId }) {
+    // // TODO: this
     // },
-    // moveTab({ tabId, windowId, pos }) {
+    // moveTab({ tabId, windowId, pos, requestId }) {
+    // // TODO: this
     // }
     // control panel update functions
-    editWindow({ windowId, updates }) {
+    editWindow({ windowId, updates, requestId }) {
       const w = store.state.windows[ windowId ];
       if (!w) return;
       w.update( updates );  // for now
       store.save(w);
-      this.send( 'UpdateWindow', { windowId: w.id, changes: updates });
+      // this.send( 'UpdateWindow', { windowId: w.id, changes: updates });
+      this.send( 'update', { windows: {[ w.id ]: updates }}, requestId )
     },
-    editTab({ tabId, updates }) {
+    editTab({ tabId, updates, requestId }) {
       const t = store.state.tabs[ tabId ];
       if (!t) return;
       t.update( updates );
       store.save(t);
-      this.send( 'UpdateTab', { tabId: t.id, tab:t.toJson(), changes: updates });
+      // this.send( 'UpdateTab', { tabId: t.id, tab:t.toJson(), changes: updates });
+      this.send( 'update', { tabs: {[ t.id ]: updates }}, requestId )
     },
     openOptions() {
       optionsPage.open()

@@ -6,6 +6,7 @@ import logger from '@/lib/logger'
 import { Window } from '@/models'
 
 const TAB_UPDATE_DELAY = 500;
+const WINDOW_UPDATE_DELAY = 1000;
 
 export const pendingWindows = {};
 export const ready = actionReady;
@@ -21,11 +22,11 @@ async function internWindow( windowId ) {
   const w = !store.controlIds[ windowId ] && store.openWindows[ windowId ];
   if ( !w ) return;
   win = store.save(w)
-  cp.send( 'AddWindow', { win });
+  cp.send( 'update', { windows: {[ win.id ]: win.toDisplay() }});
 }
 
 async function _debounceTabWindow({ tabId, tab, windowId }) {
-  await new Promise( r => setTimeout( r, 500 ));
+  await new Promise( r => setTimeout( r, TAB_UPDATE_DELAY ));
   logger.log( 'debounce', { tabId, tab, windowId })
   if ( !windowId ) {
     if ( !tab ) {
@@ -41,7 +42,10 @@ async function _debounceTabWindow({ tabId, tab, windowId }) {
   logger.log({ timer, windowId });
   clearTimeout( timer );
   pendingWindows[ windowId ] = {
-    timer: setTimeout(() => internWindow( windowId ), 1500 ),
+    timer: setTimeout(
+      () => internWindow( windowId ),
+      WINDOW_UPDATE_DELAY + TAB_UPDATE_DELAY
+    ),
   };
 }
 
@@ -56,7 +60,10 @@ export async function onWindowCreated( win ) {
   if ( pendingWindows[ windowId ])
     clearTimeout( pendingWindows[ windowId ].timer )
   pendingWindows[ windowId ] = {
-    timer: setTimeout(() => internWindow( windowId ), 1000 ),
+    timer: setTimeout(
+      () => internWindow( windowId ),
+      WINDOW_UPDATE_DELAY
+    ),
   };
 }
 
@@ -73,7 +80,8 @@ export function onWindowRemoved( winId ) {
   w.closed = true;
   w.windowId = null;
   store.save(w);
-  cp.send( 'SuspendWindow', { windowId });
+  cp.send( 'update', { windows:{[ windowId ]: { closed: true }}});
+  // TODO: abstract properly
 }
 
 export async function onWindowFocused( windowId ) {
@@ -89,29 +97,51 @@ export async function onTabActivated({ previousTabId, tabId, windowId }) {
   const w = store.openWindows[ windowId ];
   if ( !tab || !w )
     return;
-  if ( prev ) {
-    previousTabId = prev.id;
-    tabId = tab.id;
-    windowId = w.id;
-    prev.active = false;
-    tab.active = true;
-    store.saveAll([ prev, tab ]);
-    cp.send( 'FocusTab', { previousTabId, tabId, windowId });
-  } else {
-    const updates = [];
-    w.tabList.forEach( t => {
-      if ( t !== tab && t.active ) {
-        t.active = false;
-        updates.push(t);
-      }
-    });
-    tabId = tab.id;
-    windowId = w.id;
-    tab.active = true;
-    updates.push( tab )
-    store.saveAll( updates );
-    cp.send( 'FocusTab', { tabId, windowId });
-  }
+  // if ( prev ) {
+  //   previousTabId = prev.id;
+  //   tabId = tab.id;
+  //   windowId = w.id;
+  //   prev.active = false;
+  //   tab.active = true;
+  //   store.saveAll([ prev, tab ]);
+  //   // const updates = {
+  //   //   tabs: {
+  //   //     [ prev.id ]: { active: false },
+  //   //     [ tab.id ]: { active: false }
+  //   //   },
+  //   //   windows: {}
+  //   // };
+  //   // if ( prev.wid !== tab.wid ) {
+  //   //   updates.windows[ prev.wid ] = { focused: false }
+  //   //   updates.windows[ tab.wid ] = { focused: true }
+  //   // }
+  //   cp.send( 'update', updates );
+  // } else {
+  const updates = [];
+  // const tabUpdates = {};
+  w.tabList.forEach( t => {
+    if ( t !== tab && t.active ) {
+      t.active = false;
+      updates.push(t);
+      // tabUpdates[ t.id ] = { active: false }
+    }
+  });
+  tabId = tab.id;
+  windowId = w.id;
+  tab.active = true;
+  // tabUpdates[ tab.id ] = { active: true }
+  updates.push( tab )
+  store.saveAll( updates );
+  // cp.send( 'FocusTab', { tabId, windowId });
+  // cp.send( 'update', {
+  //   windows: {[ windowId ]: { focused: true }},
+  //   tabs: tabUpdates
+  // })
+  cp.send( 'update', {
+    activeWindow: w.id,
+    windows: {[ w.id ]: { activeTab: tabId }}
+  })
+  // }
 }
 
 export async function onTabAttached( tabId, { newWindowId, newPosition }) {
@@ -121,17 +151,26 @@ export async function onTabAttached( tabId, { newWindowId, newPosition }) {
   const w = store.openWindows[ newWindowId ];
   if ( !tab || !w )
     return;
-  tabId = tab.id;
-  tab.index = newPosition;
   const oldw = store.state.windows[ tab.wid ];
   const pos = findOpenPos( w, newPosition );
+  const updates = {
+    windows: {},
+    tabs: {},
+  }
+  tabId = tab.id;
+  tab.index = newPosition;
   w.addTab( tab, pos );
   if ( oldw.id in store.state.windows )
-    cp.send( 'UpdateWindow', { windowId: oldw.id, changes: { tabIds: oldw.tabIds }});
+    // cp.send( 'UpdateWindow', { windowId: oldw.id, changes: { tabIds: oldw.tabIds }});
+    updates.windows[ oldw.id ] = { tabIds: oldw.tabIds }
   else
-    cp.send( 'RemoveWindow', { windowId: oldw.id });
-  cp.send( 'UpdateTab', { tabId, changes: { detached: false, wid: w.id }});
-  cp.send( 'AddTab', { tab, pos });
+    // cp.send( 'RemoveWindow', { windowId: oldw.id });
+    updates.windows[ oldw.id ] = null
+  // cp.send( 'UpdateTab', { tabId, changes: { detached: false, wid: w.id }});
+  // cp.send( 'AddTab', { tab, pos });
+  updates.tab[ tabId ] = { detached: false }
+  updates.window[ w.id ] = { tabIds: w.tabIds }
+  cp.send( 'update', updates )
 }
 
 export async function onTabCreated( tab ) {
@@ -142,6 +181,11 @@ export async function onTabCreated( tab ) {
     return;
   }
   await ready();
+  const updates = {
+    windows: {},
+    tabs: {},
+    icons: {},
+  }
   _debounceTabWindow({ tab });
   if ( store.openTabs[ tabId ])
     return;
@@ -207,22 +251,30 @@ export async function onTabCreated( tab ) {
         });
         store.openTabs[ tabId ] = match;
         store.save( match );
-        cp.send( 'ResumeTab', { tabId: tid });
-        if ( match.active )
-          cp.send( 'FocusTab', {
-            tabId: tid,
-            windowId: match.wid
-          });
+        // cp.send( 'ResumeTab', { tabId: tid });
+        updates.tabs[ tid ] = { closed: false }
+        if ( match.active ) {
+          // cp.send( 'FocusTab', {
+          //   tabId: tid,
+          //   windowId: match.wid
+          // });
+          updates.windows[ match.wid ] = { focused: true }
+          updates.tabs[ tid ] = { active: true }
+        }
+        cp.send( 'update', updates );
         return;
       }
       tab = store.addTab( tab, w, pos );
     }
     tab = store.saveAll([ w, tab ])[ tab.id ];
-    cp.send( 'AddTab', { tab, pos });
+    // cp.send( 'AddTab', { tab, pos });
+    updates.windows[ w.id ] = { tabIds: w.tabIds };
     const icon = store.state.icons[ tab.iconid ];
     if ( icon ) {
-      cp.send( 'AddIcon', { icon: icon.toJson() });
+      // cp.send( 'AddIcon', { icon: icon.toJson() });
+      updates.icons[ icon.id ] = icon.toJson();
     }
+    cp.send( 'update', updates )
   }, TAB_UPDATE_DELAY );
 }
 
@@ -232,7 +284,8 @@ export async function onTabDetached( tabId, { oldWindowId, oldPosition }) {
   const tab = store.openTabs[ tabId ];
   if ( !tab ) return;
   tabId = tab.id;
-  cp.send( 'UpdateTab', { tabId, changes: { detached: true }})
+  // cp.send( 'UpdateTab', { tabId, changes: { detached: true }});
+  cp.send( 'update', { tabs: {[ tabId ]: { detached: true }}});
 }
 
 export async function onTabHighlighted({ windowId, tabIds }) {
@@ -240,6 +293,8 @@ export async function onTabHighlighted({ windowId, tabIds }) {
   await ready();
   const tabs = {};
   const updates = [];
+  const tabUpdates = {};
+  const sendUpdates = { tabs: tabUpdates };
   const w = store.openWindows[ windowId ];
   if (!w) return;
   tabIds.forEach( tid => {
@@ -249,7 +304,8 @@ export async function onTabHighlighted({ windowId, tabIds }) {
       tabs[ tab.id ] = true;
       return;
     }
-    cp.send( 'UpdateTab', { tabId: tab.id, changes: { highlighted: true }});
+    // cp.send( 'UpdateTab', { tabId: tab.id, changes: { highlighted: true }});
+    tabUpdates[ tab.id ] = { highlighted: true };
     tabs[ tab.id ] = true;
     tab.highlighted = true;
     updates.push( tab );
@@ -257,10 +313,12 @@ export async function onTabHighlighted({ windowId, tabIds }) {
   w.tabIds.forEach( tid => {
     const tab = store.state.tabs[ tid ];
     if ( tabs[ tid ] || !tab || !tab.highlighted ) return;
-    cp.send( 'UpdateTab', { tabId: tab.id, changes: { highlighted: false }});
+    // cp.send( 'UpdateTab', { tabId: tab.id, changes: { highlighted: false }});
+    tabUpdates[ tab.id ] = { highlighted: false };
     tab.highlighted = false;
     updates.push( tab );
   });
+  cp.send( 'update', sendUpdates )
   store.saveAll( updates );
 }
 
@@ -275,7 +333,8 @@ export async function onTabMoved( tabId, { windowId, fromIndex, toIndex }) {
   const tabIds = w.tabIds;
   tabIds.splice( tabIds.indexOf( tab.id ), 1 );
   tabIds.splice( findOpenPos( w, toIndex ), 0, tab.id );
-  cp.send( 'UpdateWindow', { windowId, changes: { tabIds }})
+  // cp.send( 'UpdateWindow', { windowId, changes: { tabIds }})
+  cp.send( 'update', { windows: {[ windowId ]: { tabIds }}})
 }
 
 export async function onTabRemoved( tabId, { windowId, isWindowClosing }) {
@@ -312,7 +371,8 @@ export async function onTabRemoved( tabId, { windowId, isWindowClosing }) {
   delete store.openTabs[ tabId ];
   store.save( tab );
   store.cleanupWindow(w);
-  cp.send( 'SuspendTab', { tabId: tab.id });
+  // cp.send( 'SuspendTab', { tabId: tab.id });
+  cp.send( 'update', { tabs :{[ tab.id ]: { closed: true }}});
 }
 
 export async function onTabReplaced( tabId, { addedTabId, removedTabId }) {
@@ -325,16 +385,23 @@ export async function onTabUpdated( tabId, changes ) {
   logger.log( 'onTabUpdated', tabId );
   _debounceTabWindow({ tabId });
   const tab = store.openTabs[ tabId ];
+  const updates = {
+    tabs: {},
+    icons: {},
+  }
   if ( !tab ) return;
   tab.update( changes );
   store.save( tab );
   tabId = tab.id;
   // const { favIconUrl, mutedInfo, ...data } = changes
-  cp.send( 'UpdateTab', { tabId, changes, tab: tab.toJson() });
+  // cp.send( 'UpdateTab', { tabId, changes, tab: tab.toJson() });
+  updates.tabs[ tabId ] = tab.toJson();
   const icon = store.state.icons[ tab.iconid ];
   if ( icon ) {
-    cp.send( 'AddIcon', { icon: icon.toJson() });
+    // cp.send( 'AddIcon', { icon: icon.toJson() });
+    updates.icons[ icon.id ] = icon.toDisplay();
   }
+  cp.send( 'update', updates );
 }
 
 export async function onTabZoomChanged({ tabId, newZoomFactor, zoomSettings }) {

@@ -47,56 +47,66 @@
               img( src='icons/edit.svg' )
             slot( name='ctrl-after-append' )
   .body
-    template( v-for='g in tabGroups' )
-      tab-group(
-        v-if=`g.type === 'group'`
-        :key=`g.tabs[0].id`
-        :gid='`group-${g.tabs[0].id}`'
-        :tabIds='g.ids'
-        :tabs='g.tabs'
-        :point='point'
-        :search='search'
-        @ctrl='pass'
-        @hover='passHover'
-        @unhover='passUnhover'
-      )
-      closed-tabs(
-        v-else-if=`g.type === 'closed'`
-        :key=`g.tabs[0].id`
-        :gid='`group-${g.tabs[0].id}`'
-        :tabs='g.tabs'
-        :point='point'
-        :search='search'
-        @ctrl='pass'
-        @hover='passHover'
-        @unhover='passUnhover'
-      )
-      open-tabs(
-        v-else
-        :key=`g.tabs[0].id`
-        :tabs='g.tabs'
-        :point='point'
-        :search='search'
-        @ctrl='pass'
-        @hover='passHover'
-        @unhover='passUnhover'
-      )
+    //- template( v-for='g in tabGroups' )
+    //-   tab-group(
+    //-     v-if=`g.type === 'group'`
+    //-     :key=`g.tabs[0].id`
+    //-     :gid='`group-${g.tabs[0].id}`'
+    //-     :tabIds='g.ids'
+    //-     :tabs='g.tabs'
+    //-     :point='point'
+    //-     :search='search'
+    //-     @hover='passHover'
+    //-     @unhover='passUnhover'
+    //-   )
+    //-   closed-tabs(
+    //-     v-else-if=`g.type === 'closed'`
+    //-     :key=`g.tabs[0].id`
+    //-     :gid='`group-${g.tabs[0].id}`'
+    //-     :tabs='g.tabs'
+    //-     :point='point'
+    //-     :search='search'
+    //-     @hover='passHover'
+    //-     @unhover='passUnhover'
+    //-   )
+    //-   open-tabs(
+    //-     v-else
+    //-     :key=`g.tabs[0].id`
+    //-     :tabs='g.tabs'
+    //-     :point='point'
+    //-     :search='search'
+    //-     @hover='passHover'
+    //-     @unhover='passUnhover'
+    //-   )
+    tab-item(
+      v-for='tid in window.tabIds'
+      :key='tid'
+      :tabId='tid'
+      :activeTab='window.activeTab'
+      :point='point'
+      :search='search'
+      @hover='passHover'
+      @unhover='passUnhover'
+    )
   .footer
 </template>
 
 <script lang="js">
-import TabGroup from '@/components/tab-group'
-import ClosedTabs from '@/components/closed-tabs'
-import OpenTabs from '@/components/open-tabs'
+import { mapGetters, mapActions } from 'vuex'
+// import TabGroup from '@/components/tab-group'
+// import ClosedTabs from '@/components/closed-tabs'
+// import OpenTabs from '@/components/open-tabs'
+import TabItem from '@/components/tab-item'
 import state from '@/control-panel/state'
 
 export default {
   name: 'TabWindow',
   mixins: [],
-  components: { TabGroup, ClosedTabs, OpenTabs },
+  // components: { TabGroup, ClosedTabs, OpenTabs },
+  components: { TabItem },
   props: {
-    window: {
-      type: Object,
+    windowId: {
+      type: String,
       required: true,
     },
     point: {
@@ -117,6 +127,7 @@ export default {
   created() {},
   mounted() {},
   methods: {
+    ...mapActions([ 'send' ]),
     hover() {
       this.$emit( 'hover', this.window.id )
     },
@@ -130,7 +141,7 @@ export default {
       this.$emit( 'unhover', $event )
     },
     focusWindow() {
-      this.$emit( 'ctrl', { op: 'focusWindow', windowId: this.window.id })
+      this.send({ op: 'focusWindow', windowId: this.window.id })
     },
     editWindow() {
       this.editing = {
@@ -138,7 +149,7 @@ export default {
       }
     },
     submitWindow() {
-      this.$emit( 'ctrl', {
+      this.send({
         op: 'editWindow',
         windowId: this.window.id,
         updates: this.editing
@@ -149,83 +160,83 @@ export default {
       this.editing = null
     },
     closeWindow() {
-      this.$emit( 'ctrl', { op: 'closeWindow', windowId: this.window.id })
+      this.send({ op: 'closeWindow', windowId: this.window.id })
     },
     selectWindow() {
       console.log( 'selecting window', this.window )
       state.setFocus( this.window )
     },
-    pass( $event ) {
-      this.$emit( 'ctrl', $event )
-    }
   },
   computed: {
+    window() {
+      return this.$store.state.windows[ this.windowId ] || {}
+    },
     hovered() {
       return this.point === this.window.id
     },
-    tabState() {
-      const t = this.window.tabs
-      let last
-      let next
-      return this.window.tabs.map(( cr, i ) => {
-        next = t[ i + 1 ]
-        const opening = !last || last.closed
-        const closing = !next || next.closed
-        last = cr
-        return { opening, closing }
-      })
-    },
-    tabGroups() {
-      const groups = []
-      let last = { tabs: [] }
-      let lastTab = null
-      this.window.tabs.forEach( t => {
-        if ( t.openerId ) {
-          if ( last.type === 'group' && last.ids[ t.openerId ]) {
-            last.ids[ t.id ] = true
-            last.tabs.push(t)
-          } else if ( lastTab && lastTab.id === t.openerId ) {
-            if ( last.tabs.length === 1 ) {
-              groups.pop()
-            } else {
-              last.tabs.pop()
-            }
-            last = {
-              type: 'group',
-              ids: {
-                [ lastTab.id ]: true,
-                [ t.id ]: true
-              },
-              tabs: [ lastTab, t ]
-            }
-            groups.push( last )
-            lastTab = t
-          }
-          return
-        }
-        if ( t.closed ) {
-          if ( last.type === 'closed' ) {
-            last.tabs.push(t)
-          } else {
-            last = {
-              type: 'closed',
-              tabs: [t]
-            }
-            groups.push( last )
-          }
-        } else if ( last.type === 'open' ) {
-          last.tabs.push(t)
-        } else {
-          last = {
-            type: 'open',
-            tabs: [t]
-          }
-          groups.push( last )
-        }
-        lastTab = t
-      })
-      return groups
-    },
+    // tabState() {
+    //   const t = this.window.tabs
+    //   let last
+    //   let next
+    //   return this.window.tabs.map(( cr, i ) => {
+    //     next = t[ i + 1 ]
+    //     const opening = !last || last.closed
+    //     const closing = !next || next.closed
+    //     last = cr
+    //     return { opening, closing }
+    //   })
+    // },
+    // tabGroups() {
+    //   const groups = []
+    //   let last = { tabs: [] }
+    //   let lastTab = null
+    //   this.window.tabs.forEach( t => {
+    //     if ( t.openerId ) {
+    //       if ( last.type === 'group' && last.ids[ t.openerId ]) {
+    //         last.ids[ t.id ] = true
+    //         last.tabs.push(t)
+    //       } else if ( lastTab && lastTab.id === t.openerId ) {
+    //         if ( last.tabs.length === 1 ) {
+    //           groups.pop()
+    //         } else {
+    //           last.tabs.pop()
+    //         }
+    //         last = {
+    //           type: 'group',
+    //           ids: {
+    //             [ lastTab.id ]: true,
+    //             [ t.id ]: true
+    //           },
+    //           tabs: [ lastTab, t ]
+    //         }
+    //         groups.push( last )
+    //         lastTab = t
+    //       }
+    //       return
+    //     }
+    //     if ( t.closed ) {
+    //       if ( last.type === 'closed' ) {
+    //         last.tabs.push(t)
+    //       } else {
+    //         last = {
+    //           type: 'closed',
+    //           tabs: [t]
+    //         }
+    //         groups.push( last )
+    //       }
+    //     } else if ( last.type === 'open' ) {
+    //       last.tabs.push(t)
+    //     } else {
+    //       last = {
+    //         type: 'open',
+    //         tabs: [t]
+    //       }
+    //       groups.push( last )
+    //     }
+    //     lastTab = t
+    //   })
+    //   return groups
+    // },
     noTabs() {
       if ( !this.search ) return false
       return !this.window.tabs.find(
@@ -235,7 +246,7 @@ export default {
       return [
         {
           collapsed: this.window.collapsed,
-          active: this.window.focused,
+          active: this.$store.state.activeWindow === this.windowId,
         },
         `state-${this.window.state}`,
         `type-${this.window.type}`,

@@ -11,6 +11,8 @@
   "dependencies": {
     "core-js": "^3.6.5",
     "debounce": "github:component/debounce",
+    "lodash-es": "^4.17.21",
+    "uuid": "^8.3.2",
     "v-jsoneditor": "^1.4.2",
     "vue": "^2.6.11",
     "vue-json-editor": "^1.4.3",

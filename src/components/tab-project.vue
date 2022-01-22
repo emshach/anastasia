@@ -1,6 +1,10 @@
 <template lang="pug">
 .tab-project
-  .header( v-hover-intent='hover' @mouseleave='unHover' :class='{ hovered }' )
+  .header(
+    v-hover-intent='hover'
+    @mouseleave='unHover'
+    :class='{ hovered }'
+  )
     .ctrl-before
        slot( name='ctrl-before' )
     .title
@@ -9,12 +13,11 @@
     .ctrl-after( slot name='ctrl-after' )
   .body
     tab-window(
-      v-for='w in project.windows'
-      :key='w.id'
-      :window='w'
+      v-for='wid in project.windowIds'
+      :key='wid'
+      :windowId='wid'
       :point='point'
       :search='search'
-      @ctrl='pass'
       @hover='passHover'
       @unhover='passUnhover'
     )
@@ -22,14 +25,15 @@
 </template>
 
 <script lang="js">
+import { mapGetters, mapActions } from 'vuex'
 import TabWindow from '@/components/tab-window'
 export default {
   name: 'TabProject',
   mixins: [],
   components: { TabWindow },
   props: {
-    project: {
-      type: Object,
+    projectId: {
+      type: String,
       required: true,
     },
     point: {
@@ -48,6 +52,7 @@ export default {
   created() {},
   mounted() {},
   methods: {
+    ...mapActions([ 'send' ]),
     hover() {
       this.$emit( 'hover', this.project.id )
     },
@@ -60,14 +65,14 @@ export default {
     passUnhover( $event ) {
       this.$emit( 'unhover', $event )
     },
-    pass( $event ) {
-      this.$emit( 'ctrl', $event )
-    }
   },
   computed: {
+    project() {
+      return this.$store.state.projects[ this.projectId ] || {}
+    },
     hovered() {
       return this.point === this.project.id
-    }
+    },
   }
 }
 </script>

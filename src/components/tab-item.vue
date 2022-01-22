@@ -32,7 +32,7 @@
         )
           close-icon.icon( decoration )
         slot( name='ctrl-before-append' )
-    a.name( href='#' @click.stop.prevent='focusTab' )
+    a.name( :href='tab.url' @click.stop.prevent='focusTab' )
       tab-icon( :icon='tab.icon' )
       span.title {{ tab.title || tab.url }}
     .space
@@ -45,6 +45,7 @@
 </template>
 
 <script lang="js">
+import { mapGetters, mapActions } from 'vuex'
 import state from '@/control-panel/state'
 import TabIcon from './tab-icon'
 import CloseIcon from 'icons/Close'
@@ -65,10 +66,11 @@ export default {
     DeleteIcon,
   },
   props: {
-    tab: {
-      type: Object,
+    tabId: {
+      type: String,
       required: true
     },
+    activeTab: String,
     opening: {
       type: Boolean,
       default: false,
@@ -99,6 +101,7 @@ export default {
   },
   mounted() {},
   methods: {
+    ...mapActions([ 'send' ]),
     hover() {
       this.$emit( 'hover', this.tab.id )
     },
@@ -106,10 +109,10 @@ export default {
       this.$emit( 'unhover', this.tab.id )
     },
     focusTab() {
-      this.$emit( 'ctrl', { op: 'focusTab', tabId: this.tab.id })
+      this.send({ op: 'focusTab', tabId: this.tab.id })
     },
     closeTab() {
-      this.$emit( 'ctrl', { op: 'closeTab', tabId: this.tab.id })
+      this.send({ op: 'closeTab', tabId: this.tab.id })
     },
     editTab() {
       this.editing = {
@@ -117,7 +120,7 @@ export default {
       }
     },
     submitTab() {
-      this.$emit( 'ctrl', {
+      this.send({
         op: 'editTab',
         tabId: this.tab.id,
         updates: this.editing
@@ -132,10 +135,13 @@ export default {
       state.setFocus( this.tab )
     },
     removeTab() {
-      this.$emit( 'ctrl', { op: 'removeTab', tabId: this.tab.id })
+      this.send({ op: 'removeTab', tabId: this.tab.id })
     },
   },
   computed: {
+    tab() {
+      return this.$store.state.tabs[ this.tabId ] || {}
+    },
     classes() {
       return {
         hovered: this.point === this.tab.id,
@@ -143,7 +149,7 @@ export default {
         selected: this.tab.selected,
         opening: this.opening,
         closing: this.closing,
-        active: this.tab.active,
+        active: this.tabId === this.activeTab,
         closed: this.tab.closed,
         attention: this.tab.attention,
         audible: this.tab.audible,

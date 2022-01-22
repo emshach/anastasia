@@ -92,7 +92,7 @@ export default {
     if ( !ruleIds )
       ruleIds = this.state.ruleIds || [];
     if ( !activeWindow )
-      activeWindow = this.state.activeWindow || null;
+      activeWindow = ( this.state.activeWindow || {} ).id;
     if ( !projectIds.length ) {
       projectIds = [ 'project-0' ];
       await this.setData({
