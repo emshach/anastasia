@@ -1,4 +1,4 @@
-<template lang="pug">
+,<template lang="pug">
 .tab-window.empty( v-if='noTabs' )
 .tab-window( v-else :class='classes' )
   .header( :class='{ editing, hovered }' )
@@ -34,6 +34,8 @@
         .title
           slot( name='title' )
             a( href='#' @click.stop.prevent='focusWindow' )
+              maximize-icon( v-if='expanded' decoration )
+              minimize-icon( v-else decoration )
               | {{ window.title }}
         .space
         slot( name='ctrl-after' )
@@ -41,12 +43,19 @@
             slot( name='ctrl-after-prepend' )
             a.btn.edit-btn(
               href='#'
+              :title=` keepOpen ? 'collapse' : 'keep open'`
+              @click.stop.prevent='toggleOpen'
+            )
+              minimize-icon( v-if='keepOpen' decoration )
+              maximize-icon( v-else decoration )
+            a.btn.edit-btn(
+              href='#'
               title='edit'
               @click.stop.prevent='editWindow'
             )
               img( src='icons/edit.svg' )
             slot( name='ctrl-after-append' )
-  .body
+  transition-group.body( tag='div' name='list' )
     //- template( v-for='g in tabGroups' )
     //-   tab-group(
     //-     v-if=`g.type === 'group'`
@@ -79,7 +88,7 @@
     //-     @unhover='passUnhover'
     //-   )
     tab-item(
-      v-for='tid in window.tabIds'
+      v-for='tid in shownTabs'
       :key='tid'
       :tabId='tid'
       :activeTab='window.activeTab'
@@ -93,9 +102,8 @@
 
 <script lang="js">
 import { mapGetters, mapActions } from 'vuex'
-// import TabGroup from '@/components/tab-group'
-// import ClosedTabs from '@/components/closed-tabs'
-// import OpenTabs from '@/components/open-tabs'
+import MinimizeIcon from 'icons/WindowMinimize'
+import MaximizeIcon from 'icons/WindowMaximize'
 import TabItem from '@/components/tab-item'
 import state from '@/control-panel/state'
 
@@ -103,7 +111,7 @@ export default {
   name: 'TabWindow',
   mixins: [],
   // components: { TabGroup, ClosedTabs, OpenTabs },
-  components: { TabItem },
+  components: { TabItem, MinimizeIcon, MaximizeIcon },
   props: {
     windowId: {
       type: String,
@@ -122,12 +130,16 @@ export default {
     return {
       editing: null,
       leaving: null,
+      keepOpen: false,
     }
   },
   created() {},
   mounted() {},
   methods: {
     ...mapActions([ 'send' ]),
+    toggleOpen() {
+      this.keepOpen = !this.keepOpen
+    },
     hover() {
       this.$emit( 'hover', this.window.id )
     },
@@ -170,6 +182,12 @@ export default {
   computed: {
     window() {
       return this.$store.state.windows[ this.windowId ] || {}
+    },
+    expanded() {
+      return this.active || this.hovered || this.editing || this.keepOpen
+    },
+    shownTabs() {
+      return this.expanded ? this.window.tabIds : []
     },
     hovered() {
       return this.point === this.window.id
@@ -242,11 +260,14 @@ export default {
       return !this.window.tabs.find(
         t => t.title.match( this.search ) || t.url.match( this.search ))
     },
+    active() {
+      return this.$store.state.activeWindow === this.windowId
+    },
     classes() {
       return [
         {
           collapsed: this.window.collapsed,
-          active: this.$store.state.activeWindow === this.windowId,
+          active: this.active,
         },
         `state-${this.window.state}`,
         `type-${this.window.type}`,
@@ -275,6 +296,12 @@ export default {
       flex-direction: column;
       a, a:visited, a:active, a:hover {
         color: grey;
+      }
+      > .title {
+        .material-design-icon__svg {
+          vertical-align: middle;
+          margin-right: 2px;
+        }
       }
     }
     .ctrl-before {

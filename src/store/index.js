@@ -1,6 +1,7 @@
 import Vue from 'vue'
 import Vuex from 'vuex'
 import sortBy from 'lodash-es/sortBy'
+import logger from '@/lib/logger'
 import { v4 as uuid } from 'uuid'
 
 Vue.use( Vuex )
@@ -23,7 +24,8 @@ export default new Vuex.Store({
     tags: {},
     icons: {},
     requests: {},
-    controlFocused: false,
+    recentlyClosed: [],
+    controlActive: false,
     activeWindow: null,
   },
   mutations: {
@@ -31,7 +33,7 @@ export default new Vuex.Store({
       state.port = port
     },
     update( state, updates ) {
-      // console.log( 'updating...', { updates })
+      // logger.log( 'updating...', { updates })
       try {
         for ( const u in updates ) {
           if ( state.models[u] ) {
@@ -53,19 +55,22 @@ export default new Vuex.Store({
           }
         }
       } catch ( error ) {
-        console.warn( 'what the HELL happened?', error )
+        logger.warn( 'what the HELL happened?', error )
       }
-      // console.log( 'after update', { state })
+      logger.log( 'updated', { state })
     },
     focusControl( state ) {
-      state.controlFocused = true
+      state.controlActive = true
     },
     blurControl( state ) {
-      state.controlFocused = false
+      state.controlActive = false
     },
     focusWindow( state, windowId ) {
       state.activeWindow = windowId
     },
+    // removeWindow( state, windowId ) {
+    //   Vue.delete( state.windows, windowId )
+    // },
     setRequest( state, requestId ) {
       const obj = {}
       Vue.set( state.requests, requestId, obj)
@@ -138,7 +143,7 @@ export default new Vuex.Store({
       const port = b.runtime.connect({ name: 'anastasia-control-panel' })
       commit( 'setPort', port )
       port.onMessage.addListener( m => {
-        console.log( 'background => control-panel', m )
+        logger.log( 'background => control-panel', m )
         dispatch( 'recv', m )
       })
     },
@@ -161,12 +166,12 @@ export default new Vuex.Store({
         const req = state.requests[ requestId ]
         if ( req ) {
           req.resolve( msg )
-          Vue.delete( state.requestId, requestId )
+          Vue.delete( state.requests, requestId )
         }
       }
       // TODO: do op with data
       const { op, ...data } = msg
-      console.log({ op, data })
+      logger.log({ op, data })
       commit( op, data )
       return msg
     },

@@ -201,8 +201,8 @@ export default {
         tabs: [],
         notes: [],
         urlTabs: {},
-        reopen: true,
-        sync: true,
+        reopen: false,
+        sync: false,
         orphaned: false,
       }
       // const { projects, windows, icons, tabs, notes, urlTabs } = out;

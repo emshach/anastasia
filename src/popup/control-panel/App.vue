@@ -6,6 +6,7 @@
       @menu='openSidebar'
       @search='search'
     )
+    closed-tabs
     tab-project(
       v-for='pid in topProjectIds'
       :project-id='pid'
@@ -26,13 +27,14 @@ import { mapGetters, mapActions } from 'vuex'
 import KHeader from '@/components/blocks/k-header'
 import KFooter from '@/components/blocks/k-footer'
 import KSidebar from '@/components/blocks/k-sidebar'
+import ClosedTabs from '@/components/closed-tabs'
 import TabProject from '@/components/tab-project'
 import state from '@/control-panel/state'
 
 export default {
   name: 'App',
   mixins: [],
-  components: { KHeader, TabProject, KFooter, KSidebar },
+  components: { KHeader, ClosedTabs, TabProject, KFooter, KSidebar },
   props: {},
   data() {
     return {

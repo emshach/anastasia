@@ -91,12 +91,12 @@ export default {
 <style lang="scss">
 .k-sidebar {
   font-size: 1.5em;
-  position: absolute;
+  position: fixed;
   height: 100vh;
   top: 0;
   left: -100vw;
   transition: left 400ms;
-  background: rgba(0,0,0,0.3);
+  background: rgba(0,0,0,0.6);
   width: 100vw;
   box-shadow: 0 0 20px rgba(0,0,0,0.5);
   &.open {

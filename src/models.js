@@ -34,12 +34,40 @@ export const RuleId = new AutoId( 'rule' );
 
 export class Model {
   constructor() {
-    const { modelName, fields, attrs, autoId: _autoId, defaults } = Model;
-    Object.assign( this, { modelName, fields, attrs, _autoId, defaults });
+    const {
+      modelName,
+      fields,
+      displayFields,
+      attrs,
+      autoId: _autoId,
+      defaults
+    } = Model;
+    Object.assign( this, {
+      modelName,
+      fields,
+      displayFields,
+      attrs,
+      _autoId,
+      defaults
+    });
     const c = Object.getPrototypeOf( this ).constructor;
     if ( c !== Model ) {
-      const { modelName, fields, attrs, autoId: _autoId, defaults } = c;
-      Object.assign( this, { modelName, fields, attrs, _autoId, defaults });
+      const {
+        modelName,
+        fields,
+        displayFields,
+        attrs,
+        autoId: _autoId,
+        defaults
+      } = c;
+      Object.assign( this, {
+        modelName,
+        fields,
+        displayFields,
+        attrs,
+        _autoId,
+        defaults
+      });
     }
   }
 
@@ -465,12 +493,12 @@ export class Tab extends Model {
   }
 
   get icon() {
-    return state.icons[ this.iconidi ];
+    return state.icons[ this.iconId ];
   }
 
   set icon( value ) {
     const icon = Icon.normalize( value );
-    this.iconid = ( icon && icon.id ) || null;
+    this.iconId = ( icon && icon.id ) || null;
   }
 
   set favIconUrl( value ) {
@@ -487,9 +515,9 @@ export class Tab extends Model {
 
   load( obj, init, rename = false ) {
     const { icon, ...data } = obj;
-    if ( icon && !data.iconid ) {
+    if ( icon && !data.iconId ) {
       const iconObj = Icon.normalize( icon );
-      if ( iconObj ) data.iconid = iconObj.id;
+      if ( iconObj ) data.iconId = iconObj.id;
     }
     return super.load( data, init, rename );
   }
@@ -605,6 +633,7 @@ Object.assign( Tab, {
       width: tab.width,
       windowId: tab.windowId,
     }
+    // console.log( 'normalizing', tab );
     const out = new Tab().load( data );
     if ( tab.favIconUrl )
       out.icon = tab.favIconUrl;

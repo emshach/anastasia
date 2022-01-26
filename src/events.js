@@ -22,7 +22,7 @@ async function internWindow( windowId ) {
   const w = !store.controlIds[ windowId ] && store.openWindows[ windowId ];
   if ( !w ) return;
   win = store.save(w)
-  cp.send( 'update', { windows: {[ win.id ]: win.toDisplay() }});
+  cp.send( 'update', { windows: {[ win.id ]: w.toDisplay() }});
 }
 
 async function _debounceTabWindow({ tabId, tab, windowId }) {
@@ -266,13 +266,16 @@ export async function onTabCreated( tab ) {
       }
       tab = store.addTab( tab, w, pos );
     }
+    if ( tab.active ) {
+      w.activeTab = tab.id
+    }
     tab = store.saveAll([ w, tab ])[ tab.id ];
     // cp.send( 'AddTab', { tab, pos });
-    updates.windows[ w.id ] = { tabIds: w.tabIds };
-    const icon = store.state.icons[ tab.iconid ];
+    updates.windows[ w.id ] = { tabIds: w.tabIds, activeTab: w.activeTab };
+    const icon = store.state.icons[ tab.iconId ];
     if ( icon ) {
       // cp.send( 'AddIcon', { icon: icon.toJson() });
-      updates.icons[ icon.id ] = icon.toJson();
+      updates.icons[ icon.id ] = icon.toDisplay();
     }
     cp.send( 'update', updates )
   }, TAB_UPDATE_DELAY );
@@ -342,6 +345,7 @@ export async function onTabRemoved( tabId, { windowId, isWindowClosing }) {
   logger.log( 'onTabRemoved', { tabId, windowId, isWindowClosing });
   const tab = store.openTabs[ tabId ];
   const w = store.openWindows[ windowId ];
+  const recentlyClosed = store.recentlyClosed;
   if ( !tab || !w ) return;
   if ( isWindowClosing && !(
     store.state.windows[ tab.wid ]
@@ -352,19 +356,19 @@ export async function onTabRemoved( tabId, { windowId, isWindowClosing }) {
   const todo = store.autoRemoveTab( tab )
   switch ( todo ) {
   case 'remove':
-    cp.removeTab({ tabId: tab.id });
+    store.removeTab( tab );
     return;
   case 'keep':
     break;
   case 'ask':
   default:
     if (! tab.closed ) {
-      if ( closePrompt.ready )
-        closePrompt.add( tab );
-      else {
-        store.recentlyClosed.push( tab );
-        closePrompt.open();
-      }
+      // if ( closePrompt.ready )
+      //   closePrompt.add( tab );
+      // else {
+      recentlyClosed.push( tab.id );
+      //   closePrompt.open();
+      // }
     }
   }
   tab.close();
@@ -372,7 +376,10 @@ export async function onTabRemoved( tabId, { windowId, isWindowClosing }) {
   store.save( tab );
   store.cleanupWindow(w);
   // cp.send( 'SuspendTab', { tabId: tab.id });
-  cp.send( 'update', { tabs :{[ tab.id ]: { closed: true }}});
+  cp.send( 'update', {
+    tabs :{[ tab.id ]: { closed: true }},
+    recentlyClosed
+  });
 }
 
 export async function onTabReplaced( tabId, { addedTabId, removedTabId }) {
@@ -395,8 +402,8 @@ export async function onTabUpdated( tabId, changes ) {
   tabId = tab.id;
   // const { favIconUrl, mutedInfo, ...data } = changes
   // cp.send( 'UpdateTab', { tabId, changes, tab: tab.toJson() });
-  updates.tabs[ tabId ] = tab.toJson();
-  const icon = store.state.icons[ tab.iconid ];
+  updates.tabs[ tabId ] = tab.toDisplay();
+  const icon = store.state.icons[ tab.iconId ];
   if ( icon ) {
     // cp.send( 'AddIcon', { icon: icon.toJson() });
     updates.icons[ icon.id ] = icon.toDisplay();

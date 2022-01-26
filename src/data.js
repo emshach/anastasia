@@ -1,4 +1,5 @@
 import { Project, Window, Icon, Tab, Rule, Note } from '@/models'
+import logger from '@/lib/logger'
 import state from '@/state'
 
 export default {
@@ -22,7 +23,11 @@ export default {
     window: {},
   },
   state,
-  toJson: state.toJson.bind( state ),
+  toJson() {
+    const out = state.toJson();
+    out.recentlyClosed = this.recentlyClosed;
+    return out;
+  },
   async init() {
     Object.assign( this, {
       panelId: null,
@@ -45,6 +50,10 @@ export default {
         window: {},
       },
     })
+  },
+  async update( data ) {
+    Object.assign( this.state, data )
+    return this.setData( data )
   },
   async getData( keys ) {
     return browser.storage.local.get( keys )
@@ -114,7 +123,7 @@ export default {
       ruleIds    ? await this.getData( ruleIds )     : {},
     ]);
 
-    console.log( 'loading', { projects, windows, icons, tabs, rules });
+    logger.log( 'loading', { projects, windows, icons, tabs, rules });
     projectIds = projectIds.filter( p => {
       const prj = projects[p];
       if ( prj )
@@ -141,8 +150,11 @@ export default {
     const liveTabIds = {};
     for ( const wid of windowIds ) {
       const w = state.windows[ wid ];
-      for ( const t of w.tabIds )
-        liveTabIds[ t ] = tabs[t];
+      const tabIds = w.tabIds.map( t => {
+        liveTabIds[t] = tabs[t];
+        return t
+      }).filter( t => t );
+      w.tabIds = tabIds;
     }
     for ( const t of Object.keys( tabs )) {
       if ( liveTabIds[t] )
@@ -188,7 +200,7 @@ export default {
       if ( !rules[ id ])
         garbage.push( id );
     }
-    // console.log( 'dumping garbage', garbage );
+    // logger.log( 'dumping garbage', garbage );
     this.clearData( garbage );
   },
   getTabWindow( tab ) {
@@ -247,12 +259,12 @@ export default {
       data = thing.toJson();
       updates[ thing.id ] = data;
     }
-    console.log( 'writing:', updates );
+    logger.log( 'writing:', updates );
     this.setData( updates );
     return data;
   },
   saveAll( things = [] ) {
-    // console.log( 'saving', things );
+    // logger.log( 'saving', things );
     const updates = this.state.flush();
     const data = {}
     for ( const thing of things ) {
@@ -260,7 +272,7 @@ export default {
          updates[ thing.id ] =
          thing.toJson ? thing.toJson() : thing;
     }
-    console.log( 'writing:', updates );
+    logger.log( 'writing:', updates );
     this.setData( updates );
     return data;
   },
@@ -308,7 +320,7 @@ export default {
       return tid;
     }).concat( win.id )));
     delete this.openWindows[ win.windowId ];
-    console.log( 'removing wiwndow', win );
+    logger.log( 'removing wiwndow', win );
     if ( win.project )
       win.project.removeWindow( win );
     this.state.remove( win );
@@ -325,7 +337,7 @@ export default {
     return Icon.normalize( icon )
   },
   addTab( tab, win, pos ) {
-    console.log( 'addTab', { tab, win, pos });
+    logger.log( 'addTab', { tab, win, pos });
     tab = Tab.normalize( tab );
     if ( win ) {
       win.addTab( tab, pos )
@@ -344,7 +356,11 @@ export default {
   removeTab( tab ) {
     if ( this.openTabs[ tab.tabId ]) {
       delete this.openTabs[ tab.tabId ];
-      browser.tabs.remove( tab.tabId );
+      browser.tabs.get( tab.tabId ).then(
+        () => browser.tabs.remove( tab.tabId )
+      ).catch( error => {
+        const err = error
+      });
       if ( tab.window )
         tab.window.removeTab( tab );
     }
@@ -353,9 +369,17 @@ export default {
     this.save();
     return tab;
   },
+  clearRecentlyClosed( tabId ) {
+    const recentlyClosed = this.recentlyClosed;
+    const found = recentlyClosed.indexOf( tabId );
+    if ( found > 0 ) return recentlyClosed;
+    recentlyClosed.splice( found, 1 );
+    return recentlyClosed;
+  },
   autoRemoveTab( tab ) {
    return /^about:/.test( tab.url )
        || this.controlIds[ tab.windowId ] ? 'remove' : 'ask'
+    // TODO: use rules
   },
   importTab( tab ) {
     return new Tab().load( tab, false, true );
@@ -365,7 +389,7 @@ export default {
     // TODO: this
   },
   // addRule( rule, win, pos ) {
-  //   console.log( 'addRule', { rule, win, pos });
+  //   logger.log( 'addRule', { rule, win, pos });
   //   rule = Rule.normalize( rule );
   //   this.save( rule );
   //   return tab;

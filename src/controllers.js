@@ -1,6 +1,7 @@
 import debounce from 'debounce'
 import store from '@/data'
 import state from '@/state'
+import logger from '@/lib/logger'
 import { loadFromImport } from '@/actions'
 import { Project, Rule } from '@/models'
 
@@ -57,7 +58,7 @@ export class Controller {
   }
 
   send( op, msg, requestId ) {
-    console.log( 'sending', { op, msg, requestId });
+    logger.log( 'sending', { op, msg, requestId });
     msg.op = op;
     if ( requestId ) {
       msg.requestId = requestId
@@ -67,11 +68,11 @@ export class Controller {
   }
 
   onMessage( msg ) {
-    console.log( `${ this.name || 'panel' } => control`, msg );
+    logger.log( `${ this.name || 'panel' } => control`, msg );
     if ( this[ msg.op ])
       this[ msg.op ]( msg );
     else
-      console.warn( `'${ msg.op }' not yet implemented` );
+      logger.warn( `'${ msg.op }' not yet implemented` );
   }
 
   setControlTab( tabId ) {
@@ -89,7 +90,7 @@ export class Controller {
     this.opening = true;
     const spec = this.window();
     b.windows.create( spec ).then( w => {
-      // console.log( 'control panel:', w );
+      // logger.log( 'control panel:', w );
       if ( w.focused )
         store.state.controlActive = true;
       store.controlIds[ w.id ] = this;
@@ -105,7 +106,7 @@ export class Controller {
       this.onOpen();
       this.opening = false;
     }).catch( err => {
-      console.warn( 'could not create window!', err );
+      logger.warn( 'could not create window!', err );
       this.opening = false;
     });
   }
@@ -186,7 +187,7 @@ export const controlPanel = new Controller({
       else
         this.loaddata = state;
     },
-    suspendTab({ tabId, requestId }) {
+    closeTab({ tabId, requestId }) {
       const tab = store.state.tabs[ tabId ];
       if ( tab.tabId && ( tab.tabId in store.openTabs ))
         b.tabs.remove( tab.tabId );
@@ -212,22 +213,16 @@ export const controlPanel = new Controller({
     removeTab({ tabId, requestId }) {
       const tab = store.state.tabs[ tabId ];
       if ( !tab ) return;
-      const { w, tix } = store.getTabWindow( tab );
-      if ( w && tix > -1 ) {
-        w.tabIds.splice( tix, 1 );
-      }
       store.removeTab( tab )
-      // this.send( 'RemoveTab', { tabId });
-      this.send( 'update', { tabs: {[ tabId ]: null }}, requestId )
-      if (w) {
-        console.log( 'tab removed', w );
-        if ( !w.tabIds.length ) {
-          this.removeWindow({ windowId: w.id });
-        } else {
-          this.send( 'update', { windows: {[ w.id ]: { tabIds: w.tabIds }}})
-          store.save(w);
-        }
-      }
+      this.send( 'update', {
+        recentlyClosed: store.clearRecentlyClosed( tabId ),
+        tabs: {[ tabId ]: null },
+      })
+    },
+    keepTab({ tabId, requestId }) {
+      this.send( 'update', {
+        recentlyClosed: store.clearRecentlyClosed( tabId )
+      })
     },
     focusTab({ tabId, requestId }) {
       const tab = store.state.tabs[ tabId ];
@@ -279,7 +274,7 @@ export const controlPanel = new Controller({
         delete t.title;
       if ( /about:/.test( t.url ))
         return;       // TODO: extension page to click link. for now, just don't
-      console.log( 'creating tab', t );
+      logger.log( 'creating tab', t );
       b.tabs.create(t).then( t => {
         this.attachTab({ tid: tab.id, tabId: t.id, tab: t });
         if ( focus ) {
@@ -301,13 +296,13 @@ export const controlPanel = new Controller({
       const storedTab = store.state.tabs[ tid ];
       const winTab = store.openTabs[ tabId ];
       const updates = { tabs: {}, windows: {} };
-      console.log( 'attachTab', { winTab, tab });
+      logger.log( 'attachTab', { winTab, tab });
       if ( winTab ) {
         if ( winTab.id === storedTab.id )
           return;
         if ( winTab.wid !== storedTab.wid )
           return;                 // TODO: throw?
-        // console.log( 'overwriting', { winTab, storedTab, tab });
+        // logger.log( 'overwriting', { winTab, storedTab, tab });
         const w = store.state.windows[ winTab.wid ];
         // TODO: maybe alias
         const i = w.tabIds.indexOf( tid );
@@ -321,17 +316,20 @@ export const controlPanel = new Controller({
         store.removeTab( winTab );
         // this.send( 'RemoveTab', { tabId: winTab.id });
         updates.tab[ winTab.id ] = null
-        this.send( 'update', updates, requestId )
       }
+      storedTab.closed = false;
+      updates.tabs[ storedTab.id ] = { closed: false };
       if ( tab ) {
         storedTab.update( tab );
+        updates.tabs[ storedTab.id ] = storedTab.toDisplay();
       }
       store.openTabs[ tabId ] = storedTab;
-      tab.tabId = tabId;
-      delete tab.closed;
+      storedTab.tabId = tabId;
       store.save( storedTab );
+      this.keepTab({ tabId: storedTab.id });
+      this.send( 'update', updates, requestId );
     },
-    async suspendWindow({ windowId, requestId }) {
+    async closeWindow({ windowId, requestId }) {
       const w = store.state.windows[ windowId ];
       if ( w.closed ) {
         this.removeWindow({ windowId, requestId });
@@ -342,7 +340,7 @@ export const controlPanel = new Controller({
         try {
           await b.windows.remove( w.windowId );
         } catch ( error ) {
-          console.error( `couldn't close window: ${error}` );
+          logger.error( `couldn't close window: ${error}` );
         }
         // this.send( 'SuspendWindow', { windowId });
         this.send(
@@ -358,17 +356,25 @@ export const controlPanel = new Controller({
       delete store.openWindows[ win.windowId ];
       const tabIds = win.tabIds;
       const togo = tabIds.concat([ win.id ]);
-      // console.log({ togo });
+      const p = win.project;
+      const updates = { projects: {}, windows: {}};
+      // logger.log({ togo });
       store.clearData( togo );
       tabIds.forEach( tid => {
-        if ( store.state.tabs[ tid ].tabId )
+        if ( store.state.tabs[ tid ] &&
+             store.state.tabs[ tid ].tabId )
           delete store.openTabs[ store.state.tabs[ tid ].tabId ];
         delete store.state.tabs[ tid ];
       });
       if ( !win.closed )
         b.windows.remove( win.windowId );
       store.removeWindow( win )
-      this.send( 'RemoveWindow', { windowId: win.id });
+      if (p) {
+        updates.projects[ p.id ] = { windowIds: p.windowIds };
+      }
+      updates.windows[ win.id ] = null;
+      this.send( 'update', updates );
+      // this.send( 'RemoveWindow', { windowId: win.id });
     },
     focusWindow({ windowId, requestId }) {
       const w = store.state.windows[ windowId ];
@@ -384,9 +390,9 @@ export const controlPanel = new Controller({
     resumeWindow({ windowId, tabId, focus, requestId }) {
       const w = store.state.windows[ windowId ];
       const controlActive = store.state.controlActive;
-      // console.log( 0, { controlActive });
-      console.log( 'resumeWindow', { windowId, tabId, focus, window: w })
-      // console.trace()
+      // logger.log( 0, { controlActive });
+      logger.log( 'resumeWindow', { windowId, tabId, focus, window: w })
+      // logger.trace()
       if (!w) return;
 
       // get tabs
@@ -399,13 +405,13 @@ export const controlPanel = new Controller({
           if (!t) continue;
           if ( t.id === tabId ) {
             delete t.closed;
-            console.log( 'found main tab', t, 'at', index );
+            logger.log( 'found main tab', t, 'at', index );
             t.active = true;
             t.index = index++;
             tab = t;
           } else if ( !t.closed ) {
             openTabs.push(t)
-            console.log( 'found open tab', t, 'at', index );
+            logger.log( 'found open tab', t, 'at', index );
             t.index = index++;
           }
         }
@@ -423,14 +429,14 @@ export const controlPanel = new Controller({
             } else {
               openTabs.push(t);
             }
-            console.log( 'found open tab', t, 'at', index );
+            logger.log( 'found open tab', t, 'at', index );
             t.index = index++;
           }
         }
       }
       if ( !tab ) tab = openTabs.pop()
       if ( !tab ) {
-        console.error( "couldn't find a tab anywhere!" )
+        logger.error( "couldn't find a tab anywhere!" )
         return
       }
       tab.discarded = false;
@@ -449,15 +455,15 @@ export const controlPanel = new Controller({
         })
       // TODO: don't do things so differently if we have a tab
       win.url = tab.url;
-      console.log( 'creating window', { win, tab, openTabs });
+      logger.log( 'creating window', { win, tab, openTabs });
       b.windows.create( win ).then( win => {
-        console.log( 'created window', win );
+        logger.log( 'created window', win );
         this.attachTab({ tid: tab.id, tabId: win.tabs[0].id, tab: win.tabs[0] });
         delete w.closed;
         this.attachWindow({ wid: w.id, windowId: win.id });
         openTabs.forEach( t => this.resumeTab({ tabId: t.id }));
         if ( focus ) {
-          // console.log( 1, { controlActive });
+          // logger.log( 1, { controlActive });
           b.windows.update( win.id, { focused: true }).then(
             controlActive ? () => {
               b.windows.update( store.panelId, { focused: true });
@@ -554,7 +560,7 @@ export const closePrompt = new Controller({
   name: 'close-prompt',
   onReady() {
     const tabs = store.recentlyClosed.splice(0);
-    // console.log( 'close-prompt tabs', tabs, store.recentlyClosed );
+    // logger.log( 'close-prompt tabs', tabs, store.recentlyClosed );
     this.send( 'Load', { tabs });
   },
   window() {
@@ -583,7 +589,7 @@ export const optionsPage = new Controller({
   name: 'options',
   onReady() {
     // const tabs = store.recentlyClosed.splice(0);
-    // // console.log( 'close-prompt tabs', tabs, store.recentlyClosed );
+    // // logger.log( 'close-prompt tabs', tabs, store.recentlyClosed );
     this.getRules();
   },
   window() {
@@ -638,7 +644,7 @@ export const optionsPage = new Controller({
       sync,
       orphaned
     }) {
-      console.log( 'importData', {
+      logger.log( 'importData', {
         projects,
         windows,
         icons,
@@ -678,8 +684,8 @@ export const optionsPage = new Controller({
             if ( !orphaned ) continue;
             // TODO: tbd
           } else {
-            if ( t.iconid && icons[ t.iconid ]) {
-              t.icon = icons[ t.iconid ].url || icons[ t.iconid ].data;
+            if ( t.iconId && icons[ t.iconId ]) {
+              t.icon = icons[ t.iconId ].url || icons[ t.iconId ].data;
             }
             tx[ t.id ] = store.importTab(t);
           }
@@ -747,7 +753,7 @@ export const optionsPage = new Controller({
             } else {
               tab.wid = null;
             }
-            tab.iconid = null;
+            tab.iconId = null;
             tab.tabId = null;
             updates.push( tab );
           }
@@ -759,7 +765,7 @@ export const optionsPage = new Controller({
           }
           // TODO: rules
 
-          console.log( 'To be imported', {
+          logger.log( 'To be imported', {
             tx,
             projects: projects.map(({ id }) => tx[ id ]),
             windows: windows.map(({ id }) => tx[ id ]),
@@ -795,8 +801,8 @@ export const optionsPage = new Controller({
         this.send( 'ImportSuccess', {} );
       } catch ( error ) {
         store.discard();
-        console.trace();
-        console.log( error, error.stack );
+        logger.trace();
+        logger.log( error, error.stack );
         this.send( 'ImportFailed', { error: '' + error });
       }
     },

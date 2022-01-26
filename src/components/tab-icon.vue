@@ -8,13 +8,7 @@ export default {
   mixins: [],
   components: {},
   props: {
-    icon: {
-      type: Object,
-      default: () => ({
-        url: '/icons/48.png',
-        data: ''
-      })
-    }
+    iconId: String
   },
   data() {
     return {
@@ -23,7 +17,12 @@ export default {
   created() {},
   mounted() {},
   methods: {},
-  computed: {}
+  computed: {
+    icon() {
+      return this.$store.state.icons[ this.iconId ] ||
+         { url: '/icons/48.png' }
+    }
+  }
 }
 </script>
 

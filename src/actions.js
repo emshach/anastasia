@@ -37,52 +37,46 @@ export async function focusWindow( winId, delayed ) {
   logger.log( 'focusWindow', winId );
   if ( winId < 0 ) return;
   await ready();
-  if ( winId === cp.windowId ) {
-    store.state.controlActive = true;
-    cp.send( 'focusControl', {});
-    return;
+  const updates = {}
+  let update = false;
+  const controlActive = ( winId === cp.windowId );
+  if ( controlActive !== store.state.controlActive ) {
+    updates.controlActive = controlActive;
+    update = true;
   }
   const w = store.openWindows[ winId ];
   if ( !w ) {
-    cp.send( 'blurControl', {});
+    if ( update ) {
+      store.update( updates );
+      cp.send( 'update', updates );
+    }
     return;
   }
-  const windowId = w.id;
-  if ( store.state.activeWindow ) {
-    const prev = store.state.activeWindow;
-    prev.focused = false;
-    w.focused = true;
-    store.saveAll([ prev,  w ]);
-  } else {
-    const focused = {};
-    Object.values( store.state.windows ).forEach( w => {
-      if ( w.focused ) {
-        w.focused = false;
-        focused[ w.id ] = w;
-      }
-    });
-    focused[ w.id ] = w;
-    w.focused = true;
-    store.saveAll( Object.values( focused ));
+  const activeWindow = w.id;
+  if ( store.state.activeWindow &&
+       store.state.activeWindow === activeWindow ) {
+    if ( update ) {
+      store.update( updates );
+      cp.send( 'update', updates );
+    }
+    return;
   }
-  store.state.activeWindow = w;
-  store.state.controlActive = false;
+  updates.activeWindow = activeWindow
+  store.update( updates );
   if ( delayed ) {
-    setTimeout(() => {
-      // cp.send( 'FocusWindow', { windowId });
-      cp.send( 'update', { windows: {[ windowId ]: { focused: true }}})
-    }, 200 )                    // FIXME: ugh, but it works
+    setTimeout(() => { cp.send( 'update', updates ); }, 200 )
+    // FIXME: ugh, but it works
   } else {
-    // cp.send( 'FocusWindow', { windowId });
-    cp.send( 'update', { activeWindow: windowId })
+    cp.send( 'update', updates );
   }
 }
 
 export async function updateWindow( storedWindow, testWindow, diff, open ) {
+  // logger.log( 'updateWindow', { storedWindow, testWindow, diff, open });
   const win = storedWindow;
   const test = testWindow;
   let resume = false;
-  const updates = { windows: {}, tabs: {} };
+  const updates = { projects: {}, windows: {}, tabs: {} };
   if ( test.windowId && win.windowId !== test.windowId ) {
     win.windowId = test.windowId;
     // post({ op: 'SetWindowId', wid, windowId });
@@ -100,15 +94,17 @@ export async function updateWindow( storedWindow, testWindow, diff, open ) {
     case 'attach':
       op[1].forEach(({ tid, tabId }) => {
         if (!store.state.tabs[ tid ]) {
-          console.warn( `tab "${tid}" does not exist!` );
+          logger.warn( `tab "${tid}" does not exist!` );
           return;
         }
         if ( tabId ) {
+          tab = store.state.tabs[ tid ]
           store.state.tabs[ tid ].tabId = tabId;
           if ( store.openTabs[ tabId ])
             store.removeTab( store.openTabs[ tabId ] );
-          store.openTabs[ tabId ] = store.state.tabs[ tid ];
+          store.openTabs[ tabId ] = tab;
           // cp.send( 'AttachTab', { tid, tabId });
+          updates.tabs[ tid ] = tab.toDisplay();
         }
       })
       break;
@@ -117,7 +113,7 @@ export async function updateWindow( storedWindow, testWindow, diff, open ) {
         tab = store.state.tabs[ tabId ];
         tab.closed = false;
         // cp.send( 'ResumeTab', { tabId });
-        updates.tabs[ tabId ] = { closed: false };
+        updates.tabs[ tabId ] = tab.toDisplay();
       })
       break;
     case 'close':
@@ -125,7 +121,7 @@ export async function updateWindow( storedWindow, testWindow, diff, open ) {
       tab = store.state.tabs[ tabId ];
       tab.closed = true;
       // cp.send( 'SuspendTab', { tabId });
-      updates.tabs[ tabId ] = { closed: true };
+      updates.tabs[ tabId ] = tab.toDisplay();
       break;
     case 'new':
       [ after, insert ] = op.slice(1);
@@ -136,19 +132,28 @@ export async function updateWindow( storedWindow, testWindow, diff, open ) {
       win.addTab( tab, pos );
       // cp.send( 'AddTab', { tab: tab.toJson(), win, pos });
       updates.windows[ win.id ] = { tabIds: win.tabIds };
-      updates.tabs[ tabId ] = tab.toJson();
+      updates.tabs[ tab.id ] = tab.toDisplay();
       if ( !tab.closed  && !tab.tabId ) {
         cp.resumeTab({ tabId: tab.id })
       }
       break;
     }
   });
+  if ( !win.pid ) {
+    const p = store.state.projects[ 'project-0' ];
+    p.addWindow( win );
+  }
+  updates.projects[ win.project.id ] = {
+    windowIds: win.project.windowIds
+  };
   cp.send( 'update', updates );
-  if ( test.project )
-    test.project.removeWindow( test );
-  const wid = test.id;
-  store.state.remove( test );
-  store.clearData([ wid ]);
+  if ( test !== win ) {
+    if ( test.project )
+      test.project.removeWindow( test );
+    const wid = test.id;
+    store.state.remove( test );
+    store.clearData([ wid ]);
+  }
   if ( resume && win.closed ) {
     cp.resumeWindow({ windowId: win.id });
   } else if ( test.focused ) {
@@ -157,25 +162,30 @@ export async function updateWindow( storedWindow, testWindow, diff, open ) {
 }
 
 export async function addWindow( win ) {
-  win = ( await store.addWindow( win )).toJson();
-  const tabs = win.tabIds.map( tid => store.state.tabs[ tid ].toJson() );
-  const p = store.state.projects[ win.pid ];
-  let pos = p.windowIds.indexOf( win.id );
-  if ( pos < 0) {
-    pos = p.windowIds.length;
-    p.windowIds.push( win.id );
+  win = ( await store.addWindow( win ));
+  const w = win.toDisplay();
+  const tabs = win.tabList.map( t => t.toDisplay() );
+  let p = store.state.projects[ win.pid ];
+
+  if (p) {
+    const pos = p.windowIds.indexOf( win.id );
+    if ( pos < 0 ) {
+      p.windowIds.push( win.id );
+    }
+  } else {
+    p = store.state.projects[ 'project-0' ];
+    p.addWindow( win )
   }
-  // cp.send( 'AddWindow', { win, tabs, pos });
   cp.send( 'update', {
-    projects: {[ p.id ]: { windowIds: p.windowId }},
-    windows: {[win.id ]: win },
+    projects: {[ p.id ]: { windowIds: p.windowIds }},
+    windows: {[ win.id ]: w },
     tabs,
   })
   return win;
 }
 
 export async function syncWindows( ws, reopen ) {
-  console.log( 'syncWindows', { ws, reopen });
+  logger.log( 'syncWindows', { ws, reopen });
   const closeEnough = ( tabs, diffs ) => ( tabs / diffs > 3 );
   // get stored urls
   const storedWindows = store.state.windowIds.reduce(( lists, wid ) => {
@@ -207,7 +217,7 @@ export async function syncWindows( ws, reopen ) {
   }, [ [], [] ]).flat();
 
   const windows = await ws();
-  console.log({ windows, storedWindows });
+  logger.log({ windows, storedWindows });
   const remainKeys = {};
   const unmatchedKeys = {};
   const matches = [];
@@ -256,7 +266,7 @@ export async function syncWindows( ws, reopen ) {
       break;
     const options = pairs[ score ];
     for ( const { pair:{ storedWindow, testWindow }, diff } of options ) {
-      // console.log({ wid, windowId, remainKeys, unmatchedKeys });
+      // logger.log({ wid, windowId, remainKeys, unmatchedKeys });
       if ( !( storedWindow.id in remainKeys )
            || !( testWindow.id in unmatchedKeys ))
         continue;
@@ -271,7 +281,7 @@ export async function syncWindows( ws, reopen ) {
   }
   unmatched = unmatched.filter( x => unmatchedKeys[ x.id ]);
   remaining = remaining.filter( x => remainKeys[ x.wid ]);
-  console.log({
+  logger.log({
     matches,
     nearMatches,
     unmatched,
@@ -304,7 +314,7 @@ export async function syncWindows( ws, reopen ) {
          : r
     )
   )).filter( x => x );
-  console.log({ remaining });
+  logger.log({ remaining });
   if ( remaining.length ) {
     const updates = {};
     remaining.forEach( reopen ? r => {

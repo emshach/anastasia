@@ -33,7 +33,7 @@
           close-icon.icon( decoration )
         slot( name='ctrl-before-append' )
     a.name( :href='tab.url' @click.stop.prevent='focusTab' )
-      tab-icon( :icon='tab.icon' )
+      tab-icon( :icon-id='tab.iconId' )
       span.title {{ tab.title || tab.url }}
     .space
     slot( name='ctrl-after' )
@@ -103,16 +103,16 @@ export default {
   methods: {
     ...mapActions([ 'send' ]),
     hover() {
-      this.$emit( 'hover', this.tab.id )
+      this.$emit( 'hover', this.tabId )
     },
     unHover() {
-      this.$emit( 'unhover', this.tab.id )
+      this.$emit( 'unhover', this.tabId )
     },
     focusTab() {
-      this.send({ op: 'focusTab', tabId: this.tab.id })
+      this.send({ op: 'focusTab', tabId: this.tabId })
     },
     closeTab() {
-      this.send({ op: 'closeTab', tabId: this.tab.id })
+      this.send({ op: 'closeTab', tabId: this.tabId })
     },
     editTab() {
       this.editing = {
@@ -122,7 +122,7 @@ export default {
     submitTab() {
       this.send({
         op: 'editTab',
-        tabId: this.tab.id,
+        tabId: this.tabId,
         updates: this.editing
       })
       this.editing = null
@@ -135,7 +135,7 @@ export default {
       state.setFocus( this.tab )
     },
     removeTab() {
-      this.send({ op: 'removeTab', tabId: this.tab.id })
+      this.send({ op: 'removeTab', tabId: this.tabId })
     },
   },
   computed: {
@@ -144,7 +144,7 @@ export default {
     },
     classes() {
       return {
-        hovered: this.point === this.tab.id,
+        hovered: this.point === this.tabId,
         focus: this.focus,
         selected: this.tab.selected,
         opening: this.opening,
