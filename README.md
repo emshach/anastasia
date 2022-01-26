@@ -1,4 +1,4 @@
-# UniBrowse Extension (codename: Anastasia )
+# UniBrowse Extension (codename: Anastasia)
 
 ## Project setup
 ```
