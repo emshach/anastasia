@@ -1,4 +1,4 @@
-# tabcontrol
+# UniBrowse Extension (codename: Anastasia )
 
 ## Project setup
 ```
