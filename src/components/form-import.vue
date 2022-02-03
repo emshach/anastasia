@@ -15,9 +15,6 @@
     .form-element( v-if='importObjects' )
       button( value='import' @click='submit' ) Import
       label
-        input( type='checkbox' v-model='importObjects.reopen' )
-        | Reopen imported open windows
-      label
         input( type='checkbox' v-model='importObjects.sync' )
         | Sync import data with current browser state
       label

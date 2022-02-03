@@ -345,7 +345,7 @@ export async function onTabRemoved( tabId, { windowId, isWindowClosing }) {
   logger.log( 'onTabRemoved', { tabId, windowId, isWindowClosing });
   const tab = store.openTabs[ tabId ];
   const w = store.openWindows[ windowId ];
-  const recentlyClosed = store.recentlyClosed;
+  const closedTabs = store.closedTabs;
   if ( !tab || !w ) return;
   if ( isWindowClosing && !(
     store.state.windows[ tab.wid ]
@@ -366,7 +366,7 @@ export async function onTabRemoved( tabId, { windowId, isWindowClosing }) {
       // if ( closePrompt.ready )
       //   closePrompt.add( tab );
       // else {
-      recentlyClosed.push( tab.id );
+      closedTabs.push( tab.id );
       //   closePrompt.open();
       // }
     }
@@ -378,7 +378,7 @@ export async function onTabRemoved( tabId, { windowId, isWindowClosing }) {
   // cp.send( 'SuspendTab', { tabId: tab.id });
   cp.send( 'update', {
     tabs :{[ tab.id ]: { closed: true }},
-    recentlyClosed
+    closedTabs
   });
 }
 

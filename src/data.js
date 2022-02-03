@@ -15,7 +15,8 @@ export default {
   sendUpdates: false,
   controlIds: {},
   controlTabIds: {},
-  recentlyClosed: [],
+  closedTabs: [],
+  closedWindows: [],
   loaded: false,
   controlPanel: null,
   expecting: {
@@ -25,7 +26,8 @@ export default {
   state,
   toJson() {
     const out = state.toJson();
-    out.recentlyClosed = this.recentlyClosed;
+    out.closedTabs = this.closedTabs;
+    out.closedWindows = this.closedWindows;
     return out;
   },
   async init() {
@@ -42,7 +44,8 @@ export default {
       sendUpdates: false,
       controlIds: {},
       controlTabIds: {},
-      recentlyClosed: [],
+      closedTabs: [],
+      closedWindows: [],
       loaded: false,
       controlPanel: null,
       expecting: {
@@ -369,12 +372,19 @@ export default {
     this.save();
     return tab;
   },
-  clearRecentlyClosed( tabId ) {
-    const recentlyClosed = this.recentlyClosed;
-    const found = recentlyClosed.indexOf( tabId );
-    if ( found > 0 ) return recentlyClosed;
-    recentlyClosed.splice( found, 1 );
-    return recentlyClosed;
+  clearClosedTab( tabId ) {
+    const closedTabs = this.closedTabs;
+    const found = closedTabs.indexOf( tabId );
+    if ( found > 0 ) return closedTabs;
+    closedTabs.splice( found, 1 );
+    return closedTabs;
+  },
+  clearClosedWindow( windowId ) {
+    const closedWindows = this.closedWindows;
+    const found = closedWindows.indexOf( windowId );
+    if ( found > 0 ) return closedWindows;
+    closedWindows.splice( found, 1 );
+    return closedWindows;
   },
   autoRemoveTab( tab ) {
    return /^about:/.test( tab.url )

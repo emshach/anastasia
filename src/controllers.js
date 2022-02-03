@@ -215,13 +215,13 @@ export const controlPanel = new Controller({
       if ( !tab ) return;
       store.removeTab( tab )
       this.send( 'update', {
-        recentlyClosed: store.clearRecentlyClosed( tabId ),
+        closedTabs: store.clearClosedTab( tabId ),
         tabs: {[ tabId ]: null },
       })
     },
     keepTab({ tabId, requestId }) {
       this.send( 'update', {
-        recentlyClosed: store.clearRecentlyClosed( tabId )
+        closedTabs: store.clearClosedTab( tabId )
       })
     },
     focusTab({ tabId, requestId }) {
@@ -559,8 +559,8 @@ export const controlPanel = new Controller({
 export const closePrompt = new Controller({
   name: 'close-prompt',
   onReady() {
-    const tabs = store.recentlyClosed.splice(0);
-    // logger.log( 'close-prompt tabs', tabs, store.recentlyClosed );
+    const tabs = store.closedTabs.splice(0);
+    // logger.log( 'close-prompt tabs', tabs, store.closedTabs );
     this.send( 'Load', { tabs });
   },
   window() {
@@ -588,8 +588,6 @@ export const closePrompt = new Controller({
 export const optionsPage = new Controller({
   name: 'options',
   onReady() {
-    // const tabs = store.recentlyClosed.splice(0);
-    // // logger.log( 'close-prompt tabs', tabs, store.recentlyClosed );
     this.getRules();
   },
   window() {

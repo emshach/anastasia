@@ -1,7 +1,7 @@
 <template lang="pug">
 .closed-tabs
   template( v-if='closedTabs.length' )
-    .header Recently Closed
+    .header Recently Closed Tabs
     transition-group.tablist( tag='div' name='list' )
       closed-tab-item(
         v-for='t in closedTabs'
@@ -42,7 +42,7 @@ export default {
   },
   computed: {
     closedTabs() {
-      return this.$store.state.recentlyClosed
+      return this.$store.state.closedTabs
     }
   }
 }

@@ -294,42 +294,12 @@ export async function syncWindows( ws, reopen ) {
     updateWindow( storedWindow, testWindow, diff, reopen );
   for ( const { storedWindow, testWindow, diff } of nearMatches )
     updateWindow( storedWindow, testWindow, diff, reopen );
-  // unmatched.forEach( reopen ? w => {
-  //   if ( w.closed ) {
-  //     addWindow(w);
-  //     w.close();
-  //   } else {
-  //     addWindow(w).then(({ id }) => {
-  //       cp.resumeWindow({ windowId: id });
-  //     });
-  //   }
-  // } : addWindow );
   unmatched.forEach( addWindow );
-  remaining = ( await Promise.all(
-    remaining.map(
-      r => r.w.windowId
-         ? browser.windows.get( r.w.windowId )
-         .then( x =>  null)
-         .catch( x => r )
-         : r
-    )
-  )).filter( x => x );
   logger.log({ remaining });
   if ( remaining.length ) {
-    const updates = {};
-    remaining.forEach( reopen ? r => {
-      const focusTab = r.tabs.find( t => t.active )
-      cp.resumeWindow({
-        windowId: r.wid,
-        tabId: focusTab && focusTab.tid,
-        focus: !!focusTab
-      });
-      updates[ r.wid ] = r.w;
-    } : r => {
-      r.w.close();
-      updates[ r.id ] = r.w;
-    });
-    store.saveAll( Object.values( updates ));
+    const closedWindows = store.closedWindows;
+    remaining.forEach(({wid}) => closedWindows.push( wid ));
+    cp.send( 'update', { closedWindows })
   } else
     store.save();               // just in case
 }
